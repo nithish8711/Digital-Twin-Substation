@@ -1,9 +1,0 @@
-{
-  "/_not-found/page": "app/_not-found/page.js",
-  "/asset-details/[id]/page": "app/asset-details/[id]/page.js",
-  "/create-substation/page": "app/create-substation/page.js",
-  "/edit-substation/[id]/page": "app/edit-substation/[id]/page.js",
-  "/manage-substations/page": "app/manage-substations/page.js",
-  "/page": "app/page.js",
-  "/view-substations/page": "app/view-substations/page.js"
-}
