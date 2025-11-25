@@ -1,11 +1,13 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/app-sidebar"
-import { TopNav } from "@/components/layout/top-nav"
+import { ConditionalTopNav } from "@/components/layout/conditional-top-nav"
+import { LiveTrendWrapper } from "@/components/live-trend/live-trend-wrapper"
+import { SimulationWrapper } from "@/components/simulation/simulation-wrapper"
+import { DiagnosisWrapper } from "@/components/diagnosis/diagnosis-wrapper"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
@@ -17,6 +19,10 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
+        url: "/icon.svg",
+        type: "image/svg+xml",
+      },
+      {
         url: "/icon-light-32x32.png",
         media: "(prefers-color-scheme: light)",
       },
@@ -24,12 +30,9 @@ export const metadata: Metadata = {
         url: "/icon-dark-32x32.png",
         media: "(prefers-color-scheme: dark)",
       },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
     ],
     apple: "/apple-icon.png",
+    shortcut: "/icon.svg",
   },
 }
 
@@ -43,12 +46,17 @@ export default function RootLayout({
       <body className={`font-sans antialiased bg-gray-50`}>
         <SidebarProvider defaultOpen={true}>
           <AppSidebar />
-          <SidebarInset className="flex flex-col min-h-screen bg-gray-50">
-            <TopNav />
-            <main className="flex-1 p-6 overflow-auto">{children}</main>
-          </SidebarInset>
+          <LiveTrendWrapper>
+            <SimulationWrapper>
+              <DiagnosisWrapper>
+                <SidebarInset className="flex flex-col min-h-screen bg-gray-50">
+                  <ConditionalTopNav />
+                  <main className="flex-1 overflow-auto p-6">{children}</main>
+                </SidebarInset>
+              </DiagnosisWrapper>
+            </SimulationWrapper>
+          </LiveTrendWrapper>
         </SidebarProvider>
-        <Analytics />
       </body>
     </html>
   )

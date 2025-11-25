@@ -1454,12 +1454,5 @@ export const DUMMY_SUBSTATIONS: DummySubstation[] = [
   },
 ]
 
-// Helper function to get substation by ID
-export function getSubstationById(id: string): DummySubstation | undefined {
-  return DUMMY_SUBSTATIONS.find((s) => s.id === id)
-}
-
-// Helper function to get all substations
-export function getAllSubstations(): DummySubstation[] {
-  return DUMMY_SUBSTATIONS
-}
+// Note: These functions are deprecated. Use functions from lib/firebase-data.ts instead
+// Keeping this file only for the DummySubstation interface type definition

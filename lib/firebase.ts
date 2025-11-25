@@ -13,6 +13,7 @@ const firebaseConfig = {
   messagingSenderId: "403206405780",
   appId: "1:403206405780:web:6a5581e174f7b084363e81",
   measurementId: "G-5J2SXQ0229",
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ?? "https://oceanberg-digitaltwin-default-rtdb.firebaseio.com",
 }
 
 // Initialize Firebase

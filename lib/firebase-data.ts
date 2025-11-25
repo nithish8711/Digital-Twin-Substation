@@ -1,8 +1,7 @@
-// Firebase data service - fetches from Firestore instead of dummy data
-import { collection, getDocs, doc, getDoc, query, where } from "firebase/firestore"
+// Firebase data service - fetches from Firestore
+import { collection, getDocs, doc, getDoc, deleteDoc, query, where, limit } from "firebase/firestore"
 import { db } from "./firebase"
 import type { DummySubstation } from "./dummy-data"
-import { DUMMY_SUBSTATIONS } from "./dummy-data"
 
 // Fetch all substations from Firebase
 export async function getAllSubstationsFromFirebase(): Promise<DummySubstation[]> {
@@ -17,10 +16,10 @@ export async function getAllSubstationsFromFirebase(): Promise<DummySubstation[]
       } as DummySubstation)
     })
     
-    return substations.length > 0 ? substations : DUMMY_SUBSTATIONS
+    return substations
   } catch (error) {
-    console.error("Error fetching from Firebase, using dummy data:", error)
-    return DUMMY_SUBSTATIONS
+    console.error("Error fetching from Firebase:", error)
+    throw error
   }
 }
 
@@ -37,17 +36,48 @@ export async function getSubstationByIdFromFirebase(id: string): Promise<DummySu
       } as DummySubstation
     }
     
-    // Fallback to dummy data
-    return DUMMY_SUBSTATIONS.find((s) => s.id === id)
+    return undefined
   } catch (error) {
-    console.error("Error fetching from Firebase, using dummy data:", error)
-    return DUMMY_SUBSTATIONS.find((s) => s.id === id)
+    console.error("Error fetching from Firebase:", error)
+    throw error
   }
 }
 
-// Export both functions for use in components
+// Delete substation from Firebase
+export async function deleteSubstation(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, "substations", id)
+    await deleteDoc(docRef)
+  } catch (error) {
+    console.error("Error deleting substation:", error)
+    throw error
+  }
+}
+
+// Export all functions for use in components
 export { getAllSubstationsFromFirebase as getAllSubstations }
 export { getSubstationByIdFromFirebase as getSubstationById }
+
+export async function getSubstationByCodeFromFirebase(substationCode: string): Promise<DummySubstation | undefined> {
+  const trimmedCode = substationCode?.trim()
+  if (!trimmedCode) return undefined
+  try {
+    const substationQuery = query(
+      collection(db, "substations"),
+      where("master.substationCode", "==", trimmedCode),
+      limit(1),
+    )
+    const snapshot = await getDocs(substationQuery)
+    if (snapshot.empty) {
+      return undefined
+    }
+    const docSnapshot = snapshot.docs[0]
+    return { id: docSnapshot.id, ...docSnapshot.data() } as DummySubstation
+  } catch (error) {
+    console.error("Error fetching substation by code from Firebase:", error)
+    throw error
+  }
+}
 
 
 
