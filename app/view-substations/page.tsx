@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Filter } from "lucide-react"
-import { DUMMY_SUBSTATIONS } from "@/lib/dummy-data"
+import { getAllSubstations } from "@/lib/firebase-data"
+import type { DummySubstation } from "@/lib/dummy-data"
 
 const InteractiveMap = dynamic(
   () => import("@/components/dashboard/interactive-map").then((mod) => mod.InteractiveMap),
@@ -23,10 +24,34 @@ export default function ViewSubstationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedVoltage, setSelectedVoltage] = useState("all")
   const [selectedOperator, setSelectedOperator] = useState("all")
+  const [substations, setSubstations] = useState<DummySubstation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchSubstations() {
+      try {
+        const data = await getAllSubstations()
+        setSubstations(data)
+      } catch (error) {
+        console.error("Error fetching substations:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchSubstations()
+  }, [])
 
   // Get unique voltage classes and operators for filter
-  const voltageClasses = Array.from(new Set(DUMMY_SUBSTATIONS.map((s) => s.master.voltageClass)))
-  const operators = Array.from(new Set(DUMMY_SUBSTATIONS.map((s) => s.master.operator)))
+  const voltageClasses = Array.from(new Set(substations.map((s) => s.master.voltageClass)))
+  const operators = Array.from(new Set(substations.map((s) => s.master.operator)))
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-muted-foreground">Loading substations...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col space-y-4">
@@ -87,6 +112,7 @@ export default function ViewSubstationsPage() {
           searchQuery={searchQuery}
           selectedVoltage={selectedVoltage}
           selectedOperator={selectedOperator}
+          substations={substations}
         />
       </div>
     </div>

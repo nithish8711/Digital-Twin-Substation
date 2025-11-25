@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet"
-import { DUMMY_SUBSTATIONS } from "@/lib/dummy-data"
+import type { DummySubstation } from "@/lib/dummy-data"
 import Link from "next/link"
 import { ExternalLink } from "lucide-react"
 
@@ -21,9 +21,10 @@ interface InteractiveMapProps {
   searchQuery: string
   selectedVoltage: string
   selectedOperator: string
+  substations: DummySubstation[]
 }
 
-export function InteractiveMap({ searchQuery, selectedVoltage, selectedOperator }: InteractiveMapProps) {
+export function InteractiveMap({ searchQuery, selectedVoltage, selectedOperator, substations }: InteractiveMapProps) {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
@@ -58,7 +59,7 @@ export function InteractiveMap({ searchQuery, selectedVoltage, selectedOperator 
   }, [])
 
   // Filter substations based on search and filters
-  const filteredSubstations = DUMMY_SUBSTATIONS.filter((station) => {
+  const filteredSubstations = substations.filter((station) => {
     const matchesSearch =
       searchQuery === "" ||
       station.master.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

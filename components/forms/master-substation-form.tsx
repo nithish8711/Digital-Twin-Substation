@@ -8,7 +8,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { MasterSubstationSchema } from "@/lib/schemas"
+import { MasterSubstationSchema, FullSubstationSchema } from "@/lib/schemas"
 import { MapPin, Calendar } from "lucide-react"
 import { useState } from "react"
 
@@ -20,7 +20,11 @@ const defaultValues: Partial<MasterSubstationFormValues> = {
   name: "",
   areaName: "",
   operator: "",
+  voltageClass: "220kV",
   installationYear: new Date().getFullYear(),
+  latitude: undefined,
+  longitude: undefined,
+  notes: "",
 }
 
 export function MasterSubstationForm() {
@@ -59,19 +63,25 @@ export function MasterSubstationForm() {
       const { collection, addDoc } = await import("firebase/firestore")
       const { db } = await import("@/lib/firebase")
       
-      // Validate and format data
+      // Prepare master data with proper types
+      const masterData = {
+        name: data.name.trim(),
+        areaName: data.areaName.trim(),
+        substationCode: data.substationCode || `AREA-${Math.floor(100000 + Math.random() * 900000)}`,
+        voltageClass: data.voltageClass,
+        installationYear: data.installationYear,
+        operator: data.operator?.trim() || null,
+        notes: data.notes?.trim() || null,
+        latitude: typeof data.latitude === "number" ? data.latitude : parseFloat(String(data.latitude || 0)),
+        longitude: typeof data.longitude === "number" ? data.longitude : parseFloat(String(data.longitude || 0)),
+      }
+
+      // Validate master data using schema
+      const validatedMaster = MasterSubstationSchema.parse(masterData)
+
+      // Prepare full substation data structure
       const substationData = {
-        master: {
-          name: data.name || "",
-          areaName: data.areaName || "",
-          substationCode: data.substationCode || `AREA-${Math.floor(100000 + Math.random() * 900000)}`,
-          voltageClass: data.voltageClass || "220kV",
-          installationYear: data.installationYear || new Date().getFullYear(),
-          operator: data.operator || "",
-          notes: data.notes || "",
-          latitude: typeof data.latitude === "number" ? data.latitude : parseFloat(String(data.latitude || 0)),
-          longitude: typeof data.longitude === "number" ? data.longitude : parseFloat(String(data.longitude || 0)),
-        },
+        master: validatedMaster,
         assets: {
           transformers: [],
           breakers: [],
@@ -90,26 +100,29 @@ export function MasterSubstationForm() {
         updatedAt: new Date().toISOString(),
       }
 
-      // Validate latitude and longitude
-      if (isNaN(substationData.master.latitude) || isNaN(substationData.master.longitude)) {
-        throw new Error("Invalid latitude or longitude values. Please enter valid numbers.")
-      }
+      // Validate full substation schema
+      const validatedData = FullSubstationSchema.parse(substationData)
 
-      if (substationData.master.latitude < -90 || substationData.master.latitude > 90) {
-        throw new Error("Latitude must be between -90 and 90 degrees.")
-      }
-
-      if (substationData.master.longitude < -180 || substationData.master.longitude > 180) {
-        throw new Error("Longitude must be between -180 and 180 degrees.")
-      }
-
-      const docRef = await addDoc(collection(db, "substations"), substationData)
+      // Save to Firebase
+      const docRef = await addDoc(collection(db, "substations"), validatedData)
       console.log("Substation created with ID: ", docRef.id)
       alert("Substation created successfully! ID: " + docRef.id)
-      // In a real app, redirect to edit page or asset details
+      
+      // Redirect to edit page
       window.location.href = `/edit-substation/${docRef.id}`
     } catch (error: any) {
       console.error("Error creating substation:", error)
+      
+      // Handle Zod validation errors
+      if (error.errors && Array.isArray(error.errors)) {
+        const validationErrors = error.errors.map((err: any) => {
+          const path = err.path.join(".")
+          return `${path}: ${err.message}`
+        }).join("\n")
+        alert(`Validation Error:\n\n${validationErrors}\n\nPlease correct the fields and try again.`)
+        return
+      }
+      
       const errorMessage = error?.message || "Unknown error occurred"
       const errorDetails = error?.code ? `Error code: ${error.code}. ` : ""
       alert(`Error creating substation.\n\n${errorDetails}${errorMessage}\n\nPlease check:\n- All required fields are filled\n- Latitude is between -90 and 90\n- Longitude is between -180 and 180\n- You have proper Firebase permissions`)
@@ -239,7 +252,7 @@ export function MasterSubstationForm() {
                   <FormLabel className="text-gray-800">
                     Voltage Class <span className="text-red-600">*</span>
                   </FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="border-gray-300 focus:ring-blue-500">
                         <SelectValue placeholder="Select voltage class" />
@@ -311,8 +324,21 @@ export function MasterSubstationForm() {
                         type="number"
                         step="any"
                         placeholder="0.000000"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                        value={field.value !== undefined && field.value !== null ? String(field.value) : ""}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (val === "" || val === "-") {
+                            field.onChange(undefined)
+                          } else {
+                            const numValue = parseFloat(val)
+                            if (!isNaN(numValue)) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                         className="border-gray-300 focus-visible:ring-blue-500 pr-10"
                       />
                     </FormControl>
@@ -335,8 +361,21 @@ export function MasterSubstationForm() {
                         type="number"
                         step="any"
                         placeholder="0.000000"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                        value={field.value !== undefined && field.value !== null ? String(field.value) : ""}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (val === "" || val === "-") {
+                            field.onChange(undefined)
+                          } else {
+                            const numValue = parseFloat(val)
+                            if (!isNaN(numValue)) {
+                              field.onChange(numValue)
+                            }
+                          }
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                         className="border-gray-300 focus-visible:ring-blue-500 pr-10"
                       />
                     </FormControl>

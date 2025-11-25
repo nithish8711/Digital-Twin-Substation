@@ -1,7 +1,24 @@
-# Build / Generated folders
-.next/
-out/
-dist/
-
 # Dependencies
 node_modules/
+.env
+.env.local
+.env.*.local
+
+# Next.js / React / Build folders
+.next/
+dist/
+out/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/

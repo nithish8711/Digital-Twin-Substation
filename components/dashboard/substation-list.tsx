@@ -1,12 +1,24 @@
 "use client"
 
-import { Eye, Edit } from "lucide-react"
+import { Eye, Edit, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { DUMMY_SUBSTATIONS } from "@/lib/dummy-data"
+import { getAllSubstations, deleteSubstation } from "@/lib/firebase-data"
+import type { DummySubstation } from "@/lib/dummy-data"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Substation {
   id: string
@@ -22,12 +34,76 @@ interface Substation {
 
 export function SubstationList() {
   const router = useRouter()
+  const [substations, setSubstations] = useState<DummySubstation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [substationToDelete, setSubstationToDelete] = useState<DummySubstation | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  useEffect(() => {
+    async function fetchSubstations() {
+      try {
+        const data = await getAllSubstations()
+        setSubstations(data)
+      } catch (error) {
+        console.error("Error fetching substations:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchSubstations()
+  }, [])
+
+  const handleDeleteClick = (substation: DummySubstation) => {
+    setSubstationToDelete(substation)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!substationToDelete) return
+
+    setIsDeleting(true)
+    try {
+      await deleteSubstation(substationToDelete.id)
+      // Remove from local state
+      setSubstations(substations.filter((s) => s.id !== substationToDelete.id))
+      setDeleteDialogOpen(false)
+      setSubstationToDelete(null)
+    } catch (error) {
+      console.error("Error deleting substation:", error)
+      alert("Failed to delete substation. Please try again.")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const getStatus = () => "active" as const
 
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className="animate-pulse">
+            <CardHeader className="h-20 bg-slate-100" />
+            <CardContent className="h-32 bg-slate-50" />
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
+  if (substations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">No substations found.</p>
+        <p className="text-sm text-muted-foreground mt-2">Create a new substation to get started.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {DUMMY_SUBSTATIONS.map((substation) => (
+      {substations.map((substation) => (
         <Card key={substation.id} className="overflow-hidden transition-all hover:shadow-md">
           <CardHeader className="border-b bg-slate-50/50 p-4">
             <div className="flex items-start justify-between">
@@ -76,9 +152,40 @@ export function SubstationList() {
             >
               <Edit className="mr-2 h-4 w-4" /> Edit
             </Button>
+            <Button
+              onClick={() => handleDeleteClick(substation)}
+              variant="outline"
+              size="sm"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </CardFooter>
         </Card>
       ))}
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Substation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{substationToDelete?.master.name}</strong> ({substationToDelete?.master.substationCode})? 
+              This action cannot be undone and will permanently remove all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

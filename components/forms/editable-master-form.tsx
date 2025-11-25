@@ -199,7 +199,8 @@ export function EditableMasterForm({ substation, onSave }: EditableMasterFormPro
                       type="number"
                       step="any"
                       {...field}
-                      onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                       className="font-medium pr-10"
                     />
                   </FormControl>
@@ -222,7 +223,8 @@ export function EditableMasterForm({ substation, onSave }: EditableMasterFormPro
                       type="number"
                       step="any"
                       {...field}
-                      onChange={(e) => field.onChange(e.target.valueAsNumber)}
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                       className="font-medium pr-10"
                     />
                   </FormControl>

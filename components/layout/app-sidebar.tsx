@@ -1,7 +1,9 @@
 "use client"
 
 import type * as React from "react"
+import { usePathname } from "next/navigation"
 import { BookOpen, Cpu, Folder, LineChart, PlayCircle, AlertTriangle, LogOut, Settings } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 import {
   Sidebar,
@@ -21,69 +23,103 @@ const navItems = [
     title: "Assets",
     url: "/view-substations",
     icon: Folder,
-    color: "text-blue-700",
+    accent: "text-blue-600",
+    bgAccent: "bg-blue-50",
+    hoverBg: "hover:bg-blue-50",
   },
   {
     title: "Live Trend",
     url: "/live-trend",
     icon: LineChart,
-    color: "text-green-700",
+    accent: "text-emerald-600",
+    bgAccent: "bg-emerald-50",
+    hoverBg: "hover:bg-emerald-50",
   },
   {
     title: "Simulation",
     url: "/simulation",
     icon: PlayCircle,
-    color: "text-purple-700",
+    accent: "text-purple-600",
+    bgAccent: "bg-purple-50",
+    hoverBg: "hover:bg-purple-50",
   },
   {
     title: "Diagnosis",
     url: "/diagnosis",
     icon: AlertTriangle,
-    color: "text-red-700",
+    accent: "text-rose-600",
+    bgAccent: "bg-rose-50",
+    hoverBg: "hover:bg-rose-50",
   },
   {
     title: "Courses",
     url: "/resources",
     icon: BookOpen,
-    color: "text-teal-700",
+    accent: "text-sky-600",
+    bgAccent: "bg-sky-50",
+    hoverBg: "hover:bg-sky-50",
   },
 ]
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname()
+
   return (
-    <Sidebar collapsible="icon" className="bg-white border-r" {...props}>
-      <SidebarHeader className="h-16 flex items-center justify-center border-b bg-white px-4">
-        <div className="flex items-center gap-2 font-bold text-xl group-data-[collapsible=icon]:hidden">
-          <Cpu className="h-6 w-6 text-blue-600" />
-          <span>OCEANBERG</span>
+    <Sidebar collapsible="icon" className="bg-gradient-to-b from-slate-50 to-white border-r border-slate-200 shadow-lg" {...props}>
+      <SidebarHeader className="h-16 flex items-center justify-center border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4">
+        <div className="flex items-center gap-3 font-bold text-2xl group-data-[collapsible=icon]:hidden">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
+            <Cpu className="h-6 w-6 text-white" />
+          </div>
+          <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">OCEANBERG</span>
         </div>
         <div className="hidden group-data-[collapsible=icon]:block">
-          <Cpu className="h-6 w-6 text-blue-600" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
+            <Cpu className="h-6 w-6 text-white" />
+          </div>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="bg-white pt-4">
-        <SidebarMenu>
-          {navItems.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild tooltip={item.title} className="h-12">
-                <a href={item.url} className="flex items-center gap-3 px-4">
-                  <item.icon className={`h-5 w-5 ${item.color}`} />
-                  <span className={`font-medium ${item.color} text-base`}>{item.title}</span>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+      <SidebarContent className="bg-transparent pt-6 px-3">
+        <SidebarMenu className="space-y-2">
+          {navItems.map((item) => {
+            const isActive = pathname?.startsWith(item.url) || (item.url === "/view-substations" && pathname === "/")
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild tooltip={item.title} className="h-auto">
+                  <a
+                    href={item.url}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-base font-semibold transition-all duration-200",
+                      "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
+                      isActive
+                        ? `${item.bgAccent} ${item.accent} shadow-md border border-slate-200`
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100",
+                      item.hoverBg && !isActive && item.hoverBg,
+                    )}
+                  >
+                    <div className={cn(
+                      "flex items-center justify-center w-9 h-9 rounded-lg transition-colors",
+                      isActive ? item.bgAccent : "bg-slate-100"
+                    )}>
+                      <item.icon className={cn("h-5 w-5 flex-shrink-0", isActive ? item.accent : "text-slate-500")} />
+                    </div>
+                    <span className="flex-1 truncate text-left">{item.title}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
         </SidebarMenu>
       </SidebarContent>
 
-      <SidebarFooter className="bg-white p-4 border-t space-y-3">
-        <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          <Avatar className="h-9 w-9">
-            <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold">JD</AvatarFallback>
+      <SidebarFooter className="bg-gradient-to-t from-slate-50 to-transparent p-4 border-t border-slate-200 space-y-3">
+        <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center p-2 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200">
+          <Avatar className="h-10 w-10 ring-2 ring-blue-100">
+            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-semibold shadow-md">JD</AvatarFallback>
           </Avatar>
           <div className="flex-1 group-data-[collapsible=icon]:hidden">
-            <p className="text-sm font-medium text-gray-900">John Doe</p>
+            <p className="text-sm font-semibold text-gray-900">John Doe</p>
             <p className="text-xs text-gray-500">john.doe@oceanberg.com</p>
           </div>
         </div>
@@ -92,7 +128,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             variant="ghost"
             size="sm"
-            className="flex-1 group-data-[collapsible=icon]:flex-none text-gray-600 hover:text-gray-900"
+            className="flex-1 group-data-[collapsible=icon]:flex-none text-gray-600 hover:text-gray-900 hover:bg-slate-100 rounded-lg"
           >
             <Settings className="h-4 w-4" />
             <span className="ml-2 group-data-[collapsible=icon]:hidden">Settings</span>
@@ -100,7 +136,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             variant="ghost"
             size="sm"
-            className="flex-1 group-data-[collapsible=icon]:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="flex-1 group-data-[collapsible=icon]:flex-none text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
           >
             <LogOut className="h-4 w-4" />
             <span className="ml-2 group-data-[collapsible=icon]:hidden">Logout</span>
