@@ -33,10 +33,11 @@ import {
 } from "recharts"
 import {
   collection,
-  getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
+  type Unsubscribe,
 } from "firebase/firestore"
 import {
   Loader2,
@@ -64,6 +65,7 @@ import {
   PARAMETER_THRESHOLDS,
   type ComponentType,
 } from "@/lib/analysis-config"
+import type { SolutionData } from "@/lib/simulation-solution"
 import { useSimulation } from "./simulation-context"
 import { cn } from "@/lib/utils"
 import { calculateAllHealthScores } from "@/lib/simulation-engine"
@@ -117,6 +119,7 @@ export interface SimulationData {
   stressScore?: number
   agingFactor?: number
   faultProbability?: number
+  solution?: SolutionData
 }
 
 type Severity = "normal" | "low" | "medium" | "high" | "critical"
@@ -491,6 +494,29 @@ const useVideoControls = () => {
   }
 }
 
+const deriveVideoSources = (src: string) => {
+  const trimmed = (src ?? "").trim()
+  if (!trimmed) {
+    return []
+  }
+  try {
+    const [base] = trimmed.split("?")
+    const normalized = base?.toLowerCase() ?? ""
+    if (normalized.endsWith(".mp4")) {
+      return [{ src: trimmed, type: "video/mp4" }]
+    }
+    if (normalized.endsWith(".webm")) {
+      return [{ src: trimmed, type: "video/webm" }]
+    }
+  } catch {
+    // Fallback to dual sources below
+  }
+  return [
+    { src: trimmed, type: "video/webm" },
+    { src: trimmed, type: "video/mp4" },
+  ]
+}
+
 function useCorrelationInsights(simulation: SimulationData | null) {
   return useMemo(() => {
     if (!simulation) return []
@@ -856,6 +882,10 @@ export function SimulationDetail({
   const [selectedMetricKey, setSelectedMetricKey] = useState<string | null>(null)
   const [hasDismissedMetric, setHasDismissedMetric] = useState(false)
   const [videoError, setVideoError] = useState(false)
+  const fallbackPlaybackSrc = COMPONENT_VIDEO_LIBRARY[componentType]
+  const [videoSource, setVideoSource] = useState<string>(fallbackPlaybackSrc)
+  const [hasCustomVideo, setHasCustomVideo] = useState(false)
+  const videoSources = useMemo(() => deriveVideoSources(videoSource), [videoSource])
   const metricSeries = useMemo(() => {
     const series: Record<string, Array<{ time: number; value: number }>> = {}
     if (simulation.timeline?.length) {
@@ -906,8 +936,21 @@ export function SimulationDetail({
       : null
 
   useEffect(() => {
+    const trimmed = typeof simulation.videoUrl === "string" ? simulation.videoUrl.trim() : ""
+    const hasAnyCustomVideo = trimmed.length > 0
+    const isHttpUrl = /^https?:\/\//i.test(trimmed)
+    console.log("[Analysis] Resolving video source", {
+      simulationId: simulation.id,
+      rawVideoUrl: simulation.videoUrl,
+      trimmed,
+      isHttpUrl,
+      hasAnyCustomVideo,
+    })
+    // Treat both absolute (https://...) and relative (/api/...) URLs as valid custom sources.
+    setVideoSource(hasAnyCustomVideo ? trimmed : fallbackPlaybackSrc)
+    setHasCustomVideo(hasAnyCustomVideo)
     setVideoError(false)
-  }, [simulation.id])
+  }, [simulation.id, simulation.videoUrl, fallbackPlaybackSrc])
 
   useEffect(() => {
     if (!blueprint.length) {
@@ -937,6 +980,21 @@ export function SimulationDetail({
     }
     if (type === "pdf") {
       downloadPdfReport(simulation)
+    }
+  }
+
+  const handleVideoError = () => {
+    console.warn("[Analysis] Video element onError fired", {
+      simulationId: simulation.id,
+      currentVideoSource: videoSource,
+      fallbackPlaybackSrc,
+    })
+    if (videoSource !== fallbackPlaybackSrc) {
+      setVideoSource(fallbackPlaybackSrc)
+      setHasCustomVideo(false)
+      setVideoError(false)
+    } else {
+      setVideoError(true)
     }
   }
 
@@ -1085,7 +1143,7 @@ export function SimulationDetail({
           <CardHeader className="border-b">
             <div className="flex items-center justify-between">
               <CardTitle>3D Simulation Playback</CardTitle>
-              {simulation.videoUrl && simulation.videoUrl.startsWith("https://") && (
+              {hasCustomVideo && (
                 <Badge variant="outline" className="text-xs">
                   <Download className="h-3 w-3 mr-1" />
                   Video captured
@@ -1098,21 +1156,28 @@ export function SimulationDetail({
           </CardHeader>
           <CardContent className="pt-6 space-y-4">
             <div className="rounded-xl border overflow-hidden relative">
-              <video
-                key={simulation.id}
-                ref={videoControls.videoRef}
-                className="w-full h-64 object-cover"
-                poster="/video-poster.png"
-                controls={false}
-                muted
-                playsInline
-                preload="metadata"
-                onError={() => setVideoError(true)}
-              >
-                <source src={simulation.videoUrl ?? COMPONENT_VIDEO_LIBRARY[componentType]} type="video/webm" />
-                <source src={simulation.videoUrl ?? COMPONENT_VIDEO_LIBRARY[componentType]} type="video/mp4" />
-              </video>
-              {videoError && (
+              {videoSources.length > 0 ? (
+                <video
+                  key={simulation.id}
+                  ref={videoControls.videoRef}
+                  className="w-full h-64 object-cover"
+                  poster="/placeholder.jpg"
+                  controls={false}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  onError={handleVideoError}
+                >
+                  {videoSources.map((source) => (
+                    <source key={`${source.type}-${source.src}`} src={source.src} type={source.type} />
+                  ))}
+                </video>
+              ) : (
+                <div className="w-full h-64 flex items-center justify-center bg-muted text-sm text-muted-foreground">
+                  No video available for this simulation
+                </div>
+              )}
+              {videoError && videoSources.length > 0 && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-sm">
                   Video source unavailable
                 </div>
@@ -1539,40 +1604,107 @@ function AnalysisPageContent() {
   const [filterComponent, setFilterComponent] = useState("all")
   const [filterSeverity, setFilterSeverity] = useState("all")
   const [isListLoading, setIsListLoading] = useState(false)
+  const simulationBucketsRef = useRef<Map<string, SimulationData[]>>(new Map())
+  const simulationSubscriptionsRef = useRef<Unsubscribe[]>([])
+  useEffect(() => {
+    let isMounted = true
 
-  const loadAllSimulations = useCallback(async () => {
-    setIsListLoading(true)
-    try {
-      const { getAllSubstations } = await import("@/lib/firebase-data")
-      const substations = await getAllSubstations()
-      const list: SimulationData[] = []
-      for (const substation of substations) {
-        const simsQuery = query(
-          collection(db, `substations/${substation.id}/simulations`),
-          orderBy("timestamp", "desc"),
-          limit(RECENT_LIMIT),
-        )
-        const snapshot = await getDocs(simsQuery)
-        snapshot.forEach((docSnap) => {
-          list.push({
-            id: docSnap.id,
-            substationId: substation.id,
-            ...docSnap.data(),
-          } as SimulationData)
+    const teardownSubscriptions = () => {
+      if (simulationSubscriptionsRef.current.length > 0) {
+        simulationSubscriptionsRef.current.forEach((unsubscribe) => {
+          try {
+            unsubscribe()
+          } catch (error) {
+            console.warn("Error cleaning up simulation listener", error)
+          }
         })
+        simulationSubscriptionsRef.current = []
       }
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      setSimulations(list.slice(0, RECENT_LIMIT))
-    } catch (error) {
-      console.error("Error loading simulations", error)
-    } finally {
-      setIsListLoading(false)
+    }
+
+    const setupListeners = async () => {
+      setIsListLoading(true)
+      teardownSubscriptions()
+      simulationBucketsRef.current.clear()
+
+      try {
+        const { getAllSubstations } = await import("@/lib/firebase-data")
+        const substations = await getAllSubstations()
+
+        if (!isMounted) {
+          return
+        }
+
+        if (substations.length === 0) {
+          setSimulations([])
+          setIsListLoading(false)
+          return
+        }
+
+        const listeners = substations.map((substation) => {
+          const simsQuery = query(
+            collection(db, `substations/${substation.id}/simulations`),
+            orderBy("timestamp", "desc"),
+            limit(RECENT_LIMIT),
+          )
+
+          return onSnapshot(
+            simsQuery,
+            (snapshot) => {
+              if (!isMounted) return
+              const entries: SimulationData[] = []
+              snapshot.forEach((docSnap) => {
+                const docData = docSnap.data()
+                const normalizedTimestamp =
+                  typeof docData.timestamp === "string"
+                    ? docData.timestamp
+                    : typeof docData.timestamp?.toDate === "function"
+                      ? docData.timestamp.toDate().toISOString()
+                      : new Date().toISOString()
+
+                entries.push({
+                  id: docSnap.id,
+                  substationId: substation.id,
+                  ...(docData as Omit<SimulationData, "id" | "substationId">),
+                  timestamp: normalizedTimestamp,
+                })
+              })
+
+              simulationBucketsRef.current.set(substation.id, entries)
+
+              const merged = Array.from(simulationBucketsRef.current.values()).flat()
+              merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              setSimulations(merged.slice(0, RECENT_LIMIT))
+              setIsListLoading(false)
+            },
+            (error) => {
+              console.error(`Error streaming simulations for ${substation.id}`, error)
+            },
+          )
+        })
+
+        if (!isMounted) {
+          listeners.forEach((unsubscribe) => unsubscribe())
+          return
+        }
+
+        simulationSubscriptionsRef.current = listeners
+      } catch (error) {
+        if (isMounted) {
+          console.error("Error loading simulations", error)
+          setIsListLoading(false)
+        }
+      }
+    }
+
+    setupListeners()
+
+    return () => {
+      isMounted = false
+      teardownSubscriptions()
+      simulationBucketsRef.current.clear()
     }
   }, [])
-
-  useEffect(() => {
-    loadAllSimulations()
-  }, [loadAllSimulations])
 
   useEffect(() => {
     const simId = searchParams.get("simulationId")

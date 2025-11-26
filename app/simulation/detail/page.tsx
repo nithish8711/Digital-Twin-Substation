@@ -62,6 +62,13 @@ function SimulationDetailContent() {
     const confirmDelete = window.confirm("Delete this simulation permanently?")
     if (!confirmDelete) return
     try {
+      try {
+        await fetch(`/api/simulation-video?simulationId=${encodeURIComponent(simulation.id)}`, {
+          method: "DELETE",
+        })
+      } catch (videoError) {
+        console.warn("Error deleting simulation video from MongoDB (non-fatal):", videoError)
+      }
       await deleteDoc(doc(db, `substations/${simulation.substationId}/simulations`, simulation.id))
       handleGoBack()
     } catch (error) {

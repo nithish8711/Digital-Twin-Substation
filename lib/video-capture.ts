@@ -1,10 +1,7 @@
 /**
  * Video capture utility for 3D simulation playback
- * Captures canvas frames and creates a 15-second summary video
+ * Captures canvas frames and creates a summary video
  */
-
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
-import { storage } from "./firebase"
 
 export interface VideoCaptureOptions {
   canvas: HTMLCanvasElement
@@ -13,8 +10,22 @@ export interface VideoCaptureOptions {
   onProgress?: (progress: number) => void
 }
 
+const VIDEO_MIME_CANDIDATES = [
+  "video/webm;codecs=vp9",
+  "video/webm;codecs=vp8",
+  "video/webm",
+  "video/mp4",
+]
+
+const pickSupportedMimeType = () => {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return null
+  }
+  return VIDEO_MIME_CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) ?? null
+}
+
 /**
- * Capture frames from canvas and create video blob
+ * Capture frames from canvas and create a video Blob
  */
 export async function captureVideoFromCanvas({
   canvas,
@@ -22,118 +33,176 @@ export async function captureVideoFromCanvas({
   fps = 30,
   onProgress,
 }: VideoCaptureOptions): Promise<Blob> {
-  const frames: ImageData[] = []
-  const totalFrames = Math.floor(duration * fps)
-  const frameInterval = 1000 / fps
+  if (typeof window === "undefined") {
+    throw new Error("Video capture is only available in the browser")
+  }
+  if (typeof MediaRecorder === "undefined") {
+    throw new Error("MediaRecorder API is not supported in this environment")
+  }
+
+  const canvasWithStream = canvas as HTMLCanvasElement & {
+    captureStream?: (frameRate?: number) => MediaStream
+  }
+
+  if (typeof canvasWithStream.captureStream !== "function") {
+    throw new Error("Canvas captureStream API is not supported")
+  }
 
   return new Promise((resolve, reject) => {
-    let frameCount = 0
-    const startTime = Date.now()
+    console.log("[VideoCapture] captureVideoFromCanvas start", {
+      durationSeconds: duration,
+      fps,
+    })
+    const stream = canvasWithStream.captureStream!(fps)
+    const preferredMime = pickSupportedMimeType()
 
-    const captureFrame = () => {
+    const recorderOptions: MediaRecorderOptions =
+      preferredMime !== null
+        ? { mimeType: preferredMime, videoBitsPerSecond: 3_000_000 }
+        : { videoBitsPerSecond: 3_000_000 }
+
+    let mediaRecorder: MediaRecorder
+    try {
+      mediaRecorder = new MediaRecorder(stream, recorderOptions)
+    } catch (error) {
+      stream.getTracks().forEach((track) => track.stop())
+      reject(error)
+      return
+    }
+
+    const chunks: Blob[] = []
+    const durationMs = Math.max(1000, duration * 1000)
+    const startTime = performance.now()
+    let progressInterval: number | null = null
+    let stopTimeout: number | null = null
+
+    const cleanup = () => {
+      if (progressInterval !== null) {
+        window.clearInterval(progressInterval)
+        progressInterval = null
+      }
+      if (stopTimeout !== null) {
+        window.clearTimeout(stopTimeout)
+        stopTimeout = null
+      }
+      stream.getTracks().forEach((track) => track.stop())
+    }
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        console.log("[VideoCapture] ondataavailable chunk size=", event.data.size)
+        chunks.push(event.data)
+      }
+    }
+
+    mediaRecorder.onerror = (event: Event) => {
+      console.error("MediaRecorder error:", event)
+      cleanup()
+      const anyEvent = event as any
+      reject(anyEvent?.error ?? new Error("Unknown MediaRecorder error"))
+    }
+
+    mediaRecorder.onstop = () => {
+      cleanup()
       try {
-        const ctx = canvas.getContext("2d")
-        if (!ctx) {
-          reject(new Error("Could not get canvas context"))
-          return
-        }
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        frames.push(imageData)
-
-        frameCount++
-        const progress = (frameCount / totalFrames) * 100
-        onProgress?.(progress)
-
-        if (frameCount < totalFrames) {
-          const elapsed = Date.now() - startTime
-          const nextFrameTime = frameCount * frameInterval
-          const delay = Math.max(0, nextFrameTime - elapsed)
-          setTimeout(captureFrame, delay)
-        } else {
-          // Convert frames to video using MediaRecorder API
-          const stream = canvas.captureStream(fps)
-          const mediaRecorder = new MediaRecorder(stream, {
-            mimeType: "video/webm;codecs=vp9",
-            videoBitsPerSecond: 2500000,
-          })
-
-          const chunks: Blob[] = []
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-              chunks.push(event.data)
-            }
-          }
-
-          mediaRecorder.onstop = () => {
-            const blob = new Blob(chunks, { type: "video/webm" })
-            resolve(blob)
-          }
-
-          mediaRecorder.start()
-          setTimeout(() => {
-            mediaRecorder.stop()
-            stream.getTracks().forEach((track) => track.stop())
-          }, duration * 1000)
-        }
+        const blob = new Blob(chunks, { type: preferredMime ?? "video/webm" })
+        console.log("[VideoCapture] capture complete, total size(bytes)=", blob.size)
+        onProgress?.(100)
+        resolve(blob)
       } catch (error) {
         reject(error)
       }
     }
 
-    // Start capturing
-    captureFrame()
+    // timeslice controls how often ondataavailable fires
+    mediaRecorder.start(Math.round(1000 / fps))
+
+    // progress UI
+    progressInterval = window.setInterval(() => {
+      const elapsed = performance.now() - startTime
+      const percent = Math.min(100, (elapsed / durationMs) * 100)
+      onProgress?.(percent)
+      if (elapsed >= durationMs && mediaRecorder.state === "recording") {
+        mediaRecorder.stop()
+      }
+    }, 200)
+
+    // hard stop safety
+    stopTimeout = window.setTimeout(() => {
+      if (mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop()
+      }
+    }, durationMs + 200)
   })
 }
 
 /**
- * Upload video to Firebase Storage and return download URL
+ * Upload a captured simulation video to local MongoDB (via Next.js API) and return a URL
  */
 export async function uploadSimulationVideo(
   videoBlob: Blob,
   simulationId: string,
-  componentType: string
+  componentType: string,
 ): Promise<string> {
-  const timestamp = Date.now()
-  const fileName = `simulations/${componentType}/${simulationId}_${timestamp}.webm`
-  const storageRef = ref(storage, fileName)
-
   try {
-    await uploadBytes(storageRef, videoBlob, {
-      contentType: "video/webm",
+    console.log("[VideoCapture] uploadSimulationVideo (MongoDB) start", {
+      simulationId,
+      componentType,
+      size: videoBlob.size,
+      type: videoBlob.type,
     })
 
-    const downloadURL = await getDownloadURL(storageRef)
-    return downloadURL
+    const mimeType = videoBlob.type || "video/webm"
+    const query = new URLSearchParams({
+      simulationId,
+      componentType,
+    })
+
+    const response = await fetch(`/api/simulation-video?${query.toString()}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": mimeType,
+      },
+      body: videoBlob,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      console.error("Failed to upload simulation video via API:", response.status, text)
+      throw new Error("Failed to upload simulation video")
+    }
+
+    const data = (await response.json()) as { videoUrl?: string }
+    if (!data.videoUrl) {
+      throw new Error("API did not return videoUrl")
+    }
+
+    console.log("[VideoCapture] uploadSimulationVideo (MongoDB) success, videoUrl=", data.videoUrl)
+    return data.videoUrl
   } catch (error) {
     console.error("Error uploading simulation video:", error)
-    throw new Error("Failed to upload simulation video to Firebase")
+    throw new Error("Failed to upload simulation video")
   }
 }
 
 /**
- * Capture video from canvas element and upload to Firebase
+ * Capture video from canvas and upload to Firebase; returns download URL
  */
 export async function captureAndUploadSimulationVideo(
   canvas: HTMLCanvasElement,
   simulationId: string,
   componentType: string,
-  duration: number = 15,
-  onProgress?: (progress: number) => void
+  duration = 15,
+  onProgress?: (progress: number) => void,
 ): Promise<string> {
-  try {
-    const videoBlob = await captureVideoFromCanvas({
-      canvas,
-      duration,
-      fps: 30,
-      onProgress,
-    })
+  const videoBlob = await captureVideoFromCanvas({
+    canvas,
+    duration,
+    fps: 30,
+    onProgress,
+  })
 
-    const downloadURL = await uploadSimulationVideo(videoBlob, simulationId, componentType)
-    return downloadURL
-  } catch (error) {
-    console.error("Error capturing/uploading video:", error)
-    throw error
-  }
+  const downloadURL = await uploadSimulationVideo(videoBlob, simulationId, componentType)
+  return downloadURL
 }
 

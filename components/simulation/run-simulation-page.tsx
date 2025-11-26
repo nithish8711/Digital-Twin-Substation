@@ -1,19 +1,22 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSimulation } from "./simulation-context"
 import { SubstationSearchBar } from "./substation-search-bar"
 import { ComponentSelectorNav } from "./component-selector-nav"
 import { SimulationInputFields } from "./simulation-input-fields"
-import { SimulationModelViewer } from "./simulation-model-viewer"
+import { SimulationModelViewer, type SimulationModelViewerHandle } from "./simulation-model-viewer"
 import { RunSimulationButton } from "./run-simulation-button"
 import type { DummySubstation } from "@/lib/dummy-data"
 import { runSimulation } from "@/lib/simulation-engine"
-import { collection, addDoc } from "firebase/firestore"
+import { collection, doc, setDoc, updateDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
-import { COMPONENT_RATED_SPECS, type ComponentType } from "@/lib/analysis-config"
+import { COMPONENT_RATED_SPECS, COMPONENT_VIDEO_LIBRARY, type ComponentType } from "@/lib/analysis-config"
+import { uploadSimulationVideo } from "@/lib/video-capture"
+import { generateSolutionPackage } from "@/lib/simulation-solution"
+import type { SimulationData } from "./analysis-page"
 
 const ASSET_COLLECTION_LOOKUP: Record<ComponentType, keyof DummySubstation["assets"]> = {
   transformer: "transformers",
@@ -55,6 +58,7 @@ export function RunSimulationPage() {
   const [substation, setSubstation] = useState<DummySubstation | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const router = useRouter()
+  const modelViewerRef = useRef<SimulationModelViewerHandle | null>(null)
 
   // Input states for each component type
   const [transformerInputs, setTransformerInputs] = useState({
@@ -342,8 +346,45 @@ export function RunSimulationPage() {
         assetContext,
       })
 
-      // Save to Firebase
-      const simulationData = {
+      // Save to Firebase / Mongo-backed video API
+      const simulationsCollection = collection(db, `substations/${substation.id}/simulations`)
+      const docRef = doc(simulationsCollection)
+
+      // Default video URL comes from static library (currently empty), will be overwritten
+      // by captured simulation video when available.
+      let resolvedVideoUrl = COMPONENT_VIDEO_LIBRARY[selectedComponent] ?? ""
+
+      // Capture and upload simulation playback before we persist the record, so that
+      // the analysis page has a ready-to-play videoUrl and does not show "No video available".
+      if (modelViewerRef.current) {
+        console.log(
+          "[Simulation] Starting video capture",
+          "simulationId=",
+          docRef.id,
+          "component=",
+          selectedComponent,
+        )
+        try {
+          const captureBlob = await modelViewerRef.current.captureVideo({
+            duration: 15,
+            timeline: result.timeline,
+          })
+          if (captureBlob && captureBlob.size > 0) {
+            console.log("[Simulation] Capture complete, size(bytes)=", captureBlob.size)
+            const uploadedUrl = await uploadSimulationVideo(captureBlob, docRef.id, selectedComponent)
+            if (uploadedUrl) {
+              resolvedVideoUrl = uploadedUrl
+              console.log("[Simulation] Uploaded simulation video URL:", uploadedUrl)
+            }
+          } else {
+            console.warn("[Simulation] Capture returned empty blob – skipping upload")
+          }
+        } catch (videoErr) {
+          console.warn("[Simulation] Video capture/upload failed, proceeding without video:", videoErr)
+        }
+      }
+
+      const baseSimulationData = {
         substationId: substation.id,
         componentType: selectedComponent,
         assetMetadata: buildAssetMetadata(),
@@ -364,16 +405,24 @@ export function RunSimulationPage() {
         busbarHealth: result.busbarHealth,
         faultPredictions: result.faultPredictions,
         diagnosis: result.diagnosis,
-        videoUrl: result.videoUrl,
+        videoUrl: resolvedVideoUrl,
         timestamp: new Date().toISOString(),
       }
 
-      const cleanedSimulationData = removeUndefined(simulationData) as typeof simulationData
+      const simulationForSolution = {
+        id: docRef.id,
+        ...baseSimulationData,
+      } as SimulationData
 
-      const docRef = await addDoc(
-        collection(db, `substations/${substation.id}/simulations`),
-        cleanedSimulationData
-      )
+      const solutionPayload = await generateSolutionPackage(simulationForSolution)
+
+      const simulationRecord = removeUndefined({
+        ...baseSimulationData,
+        solution: solutionPayload,
+      }) as typeof baseSimulationData & { solution: typeof solutionPayload }
+
+      console.log("[Simulation] Saving simulation record with initial videoUrl:", resolvedVideoUrl)
+      await setDoc(docRef, simulationRecord)
 
       // Navigate to analysis page with simulation ID
       setActiveTab("analysis")
@@ -418,7 +467,7 @@ export function RunSimulationPage() {
         </Card>
 
         {/* Right Column - 3D Model */}
-        <SimulationModelViewer inputValues={getCurrentInputs()} />
+        <SimulationModelViewer ref={modelViewerRef} inputValues={getCurrentInputs()} />
       </div>
     </div>
   )

@@ -32,6 +32,18 @@ import { db } from "@/lib/firebase"
 import { cn } from "@/lib/utils"
 import type { SimulationData } from "./analysis-page"
 import { useToast } from "@/hooks/use-toast"
+import {
+  generateSolutionPackage,
+  type SolutionData,
+  type ComponentInfoSummary,
+  type AiInsight,
+  type MaintenanceBlock,
+  type FailureForecastEntry,
+  type ReplacementRecommendation,
+  type PreventiveScheduleEntry,
+  type SolutionSummary,
+  type RiskLevel,
+} from "@/lib/simulation-solution"
 
 const COMPONENT_LABELS: Record<SimulationData["componentType"], string> = {
   transformer: "Transformer",
@@ -49,69 +61,6 @@ interface FaultSummary {
   probability: number
   severity: string
   eta?: string | null
-}
-
-interface ComponentInfoSummary {
-  componentType: string
-  assetId: string
-  manufacturer: string
-  model: string
-  commissionedYear: string
-  lastMaintenanceDate: string
-  conditionSummary: string
-  finalStateSummary: Array<{ label: string; value: string }>
-  healthScore: number
-  riskLevel: RiskLevel
-  faultPredictions: FaultSummary[]
-}
-
-interface AiInsight {
-  title: string
-  severity: RiskLevel
-  description: string
-}
-
-interface MaintenanceBlock {
-  title: string
-  tasks: string[]
-}
-
-interface FailureForecastEntry {
-  window: string
-  outlook: string
-  recommendation: string
-}
-
-interface ReplacementRecommendation {
-  item: string
-  urgency: RiskLevel
-  rul: string
-  cost?: string
-}
-
-interface PreventiveScheduleEntry {
-  cadence: string
-  tasks: string[]
-}
-
-interface SolutionSummary {
-  overallHealth: number
-  failureProbability: number
-  rootCauses: string[]
-  topActions: string[]
-  expectedImprovement: number
-}
-
-interface SolutionData {
-  generatedAt: string
-  componentInfo: ComponentInfoSummary
-  aiInsights: AiInsight[]
-  maintenancePlan: MaintenanceBlock[]
-  failureForecast: FailureForecastEntry[]
-  replacementPlan: ReplacementRecommendation[]
-  preventiveSchedule: PreventiveScheduleEntry[]
-  summary: SolutionSummary
-  promptPayload: Record<string, any>
 }
 
 interface SolutionHistoryEntry {
@@ -236,7 +185,7 @@ function SolutionPageContent() {
     setIsGenerating(true)
     setError(null)
     try {
-      const aiSolution = await generateAISolution(simData)
+      const aiSolution = await generateSolutionPackage(simData)
       const docRef = doc(db, `substations/${subId}/simulations`, simId)
       await updateDoc(docRef, { solution: aiSolution })
       setSolution(aiSolution)
