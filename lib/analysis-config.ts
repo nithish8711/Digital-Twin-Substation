@@ -13,17 +13,15 @@ export interface ParameterThreshold {
   healthyText?: string
 }
 
+// Local fallback video sources for each component type.
+// For now we leave these empty so that playback relies on captured MongoDB videos only.
+// If you add local demo MP4/WebM files under /public, populate these with relative URLs.
 export const COMPONENT_VIDEO_LIBRARY: Record<ComponentType, string> = {
-  transformer:
-    "https://storage.googleapis.com/coverr-main/mp4/Industrial_Engine.mp4",
-  bayLines:
-    "https://storage.googleapis.com/coverr-main/mp4/Transport_Energy.mp4",
-  circuitBreaker:
-    "https://storage.googleapis.com/coverr-main/mp4/Metallic_Sparks.mp4",
-  isolator:
-    "https://storage.googleapis.com/coverr-main/mp4/Mechanical_Coupling.mp4",
-  busbar:
-    "https://storage.googleapis.com/coverr-main/mp4/Electric_Substation.mp4",
+  transformer: "",
+  bayLines: "",
+  circuitBreaker: "",
+  isolator: "",
+  busbar: "",
 }
 
 export const COMPONENT_HEALTH_BLUEPRINT: Record<

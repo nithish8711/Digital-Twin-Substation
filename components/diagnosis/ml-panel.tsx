@@ -79,7 +79,7 @@ export function MLPanel({ component, faultProbability, predictedFault, explanati
                 timeline
                   .slice(-3)
                   .map((value, index) => (
-                    <span key={value + index} className="mr-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs">
+                    <span key={`forecast-${index}`} className="mr-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs">
                       {value.toFixed(1)}
                     </span>
                   ))

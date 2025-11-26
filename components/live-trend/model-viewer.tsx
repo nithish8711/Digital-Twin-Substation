@@ -25,6 +25,15 @@ interface ModelViewerProps {
   componentType?: ViewerComponentType
   useFallback?: boolean
   autoRotate?: boolean
+  onCanvasReady?: (canvas: HTMLCanvasElement | null) => void
+  // Optional in-scene HUD metrics that will be rendered into the WebGL canvas
+  hudMetrics?: {
+    overall: number
+    fault: number
+    stress: number
+    aging: number
+  } | null
+  hudVisible?: boolean
 }
 
 type ViewPreset = "iso" | "top" | "side" | "front" | "back"
@@ -37,6 +46,9 @@ export function ModelViewer({
   componentType,
   useFallback = false,
   autoRotate = false,
+  onCanvasReady,
+  hudMetrics,
+  hudVisible = true,
 }: ModelViewerProps) {
   const canUseFallback = (type: ViewerComponentType | undefined): type is ViewerComponentType => Boolean(type)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -49,6 +61,9 @@ export function ModelViewer({
   const cameraDistanceRef = useRef(6)
   const autoRotateRef = useRef(autoRotate)
   const mountedRef = useRef(true)
+  const hudCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const hudTextureRef = useRef<THREE.CanvasTexture | null>(null)
+  const hudMeshRef = useRef<THREE.Mesh | null>(null)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -124,6 +139,93 @@ export function ModelViewer({
     controlsRef.current.update()
     cameraTargetRef.current = center.clone()
     cameraDistanceRef.current = distance
+
+    // Place HUD panel relative to model bounds if it exists
+    if (hudMeshRef.current) {
+      hudMeshRef.current.position.set(
+        center.x + size.x * 0.9,
+        center.y + size.y * 0.6,
+        center.z,
+      )
+      hudMeshRef.current.lookAt(cameraRef.current.position)
+    }
+  }
+
+  const ensureHudPanel = () => {
+    if (!sceneRef.current || hudMeshRef.current) return
+
+    const canvas = document.createElement("canvas")
+    canvas.width = 512
+    canvas.height = 256
+    const texture = new THREE.CanvasTexture(canvas)
+    // Use default color space; explicit sRGBEncoding is not available in current three version
+    texture.needsUpdate = true
+
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+    })
+    const geometry = new THREE.PlaneGeometry(3, 1.5)
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set(4, 3, 0)
+    mesh.renderOrder = 10
+
+    sceneRef.current.add(mesh)
+    hudCanvasRef.current = canvas
+    hudTextureRef.current = texture
+    hudMeshRef.current = mesh
+  }
+
+  const updateHudTexture = () => {
+    if (!hudCanvasRef.current || !hudTextureRef.current || !hudMetrics) return
+    const canvas = hudCanvasRef.current
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Panel background
+    ctx.fillStyle = "rgba(0,0,0,0.8)"
+    const radius = 24
+    const w = canvas.width - 40
+    const h = canvas.height - 40
+    const x = 20
+    const y = 20
+    ctx.beginPath()
+    ctx.moveTo(x + radius, y)
+    ctx.lineTo(x + w - radius, y)
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius)
+    ctx.lineTo(x + w, y + h - radius)
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h)
+    ctx.lineTo(x + radius, y + h)
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius)
+    ctx.lineTo(x, y + radius)
+    ctx.quadraticCurveTo(x, y, x + radius, y)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.font = "24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    ctx.fillStyle = "#e5e7eb"
+    ctx.textBaseline = "top"
+
+    const rows = [
+      ["Health", `${hudMetrics.overall.toFixed(1)}%`],
+      ["Fault Prob.", `${hudMetrics.fault.toFixed(1)}%`],
+      ["Stress", `${hudMetrics.stress.toFixed(1)}%`],
+      ["Aging", `${hudMetrics.aging.toFixed(1)}%`],
+    ] as const
+
+    const startX = x + 24
+    let rowY = y + 24
+    rows.forEach(([label, value]) => {
+      ctx.fillStyle = "#9ca3af"
+      ctx.fillText(label, startX, rowY)
+      ctx.fillStyle = "#f9fafb"
+      ctx.fillText(value, startX + 220, rowY)
+      rowY += 42
+    })
+
+    hudTextureRef.current.needsUpdate = true
   }
 
   // Initialize scene
@@ -163,6 +265,7 @@ export function ModelViewer({
     renderer.domElement.addEventListener("pointerleave", handlePointerUp)
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
+    onCanvasReady?.(renderer.domElement)
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -228,6 +331,7 @@ export function ModelViewer({
         container.removeChild(renderer.domElement)
       }
       renderer.dispose()
+      onCanvasReady?.(null)
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown)
       renderer.domElement.removeEventListener("pointerup", handlePointerUp)
       renderer.domElement.removeEventListener("pointerleave", handlePointerUp)
@@ -266,6 +370,7 @@ export function ModelViewer({
       const model = createFallbackModel(componentType, glowDataRef.current, showGlowRef.current)
       sceneRef.current.add(model)
       modelRef.current = model
+      ensureHudPanel()
       positionCameraToModel(model)
       safeSetState(setHasModel, true)
       safeSetState(setIsLoading, false)
@@ -341,6 +446,7 @@ export function ModelViewer({
 
           sceneRef.current.add(model)
           modelRef.current = model
+          ensureHudPanel()
           positionCameraToModel(model)
           safeSetState(setHasModel, true)
           safeSetState(setIsLoading, false)
@@ -400,6 +506,15 @@ export function ModelViewer({
       }
     }
   }, [glowData, showGlow])
+
+  // Update HUD panel visibility and texture when metrics change
+  useEffect(() => {
+    if (!hudMeshRef.current) return
+    hudMeshRef.current.visible = Boolean(hudMetrics) && hudVisible
+    if (hudMetrics && hudVisible) {
+      updateHudTexture()
+    }
+  }, [hudMetrics, hudVisible])
 
   useEffect(() => {
     autoRotateRef.current = autoRotate
