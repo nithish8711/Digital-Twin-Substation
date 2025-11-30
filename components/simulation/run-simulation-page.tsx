@@ -60,82 +60,82 @@ export function RunSimulationPage() {
   const router = useRouter()
   const modelViewerRef = useRef<SimulationModelViewerHandle | null>(null)
 
-  // Input states for each component type
+  // Input states for each component type (start from conservative, lower operating ranges)
   const [transformerInputs, setTransformerInputs] = useState({
-    va: 400, vb: 400, vc: 400,
-    ampa: 1000, ampb: 1000, ampc: 1000,
+    va: 380, vb: 380, vc: 380,
+    ampa: 600, ampb: 600, ampc: 600,
     frequency: 50,
-    loadUnbalancePercent: 5,
-    neutralCurrent: 50,
-    windingTemperature: 75,
-    hotspotTemperature: 85,
-    oilTemperature: 65,
-    ambientTemperature: 35,
-    oilLevel: 80,
-    oilMoisture: 15,
-    oilAcidity: 0.2,
-    dielectricStrength: 50,
-    hydrogenPPM: 100,
-    methanePPM: 50,
-    acetylenePPM: 10,
-    ethylenePPM: 30,
-    CO_PPM: 200,
-    transformerLoading: 85,
-    oltcTapPosition: 17,
-    oltcDeviation: 2,
+    loadUnbalancePercent: 3,
+    neutralCurrent: 20,
+    windingTemperature: 65,
+    hotspotTemperature: 75,
+    oilTemperature: 55,
+    ambientTemperature: 30,
+    oilLevel: 92,
+    oilMoisture: 12,
+    oilAcidity: 0.05,
+    dielectricStrength: 60,
+    hydrogenPPM: 60,
+    methanePPM: 20,
+    acetylenePPM: 2,
+    ethylenePPM: 10,
+    CO_PPM: 150,
+    transformerLoading: 65,
+    oltcTapPosition: 9,
+    oltcDeviation: 1,
     oltcMotorStatus: "ON",
-    oltcOpsCount: 5000,
-    vibrationLevel: 3,
-    noiseLevel: 65,
+    oltcOpsCount: 3000,
+    vibrationLevel: 2,
+    noiseLevel: 60,
     buchholzAlarm: "NORMAL",
-    gasAccumulationRate: 5,
-    timeOfSimulation: 24,
+    gasAccumulationRate: 2,
+    timeOfSimulation: 12,
   })
 
   const [bayLinesInputs, setBayLinesInputs] = useState({
-    ctBurdenPercent: 60,
-    ctPrimaryCurrent: 1000,
-    ctSecondaryCurrent: 5,
-    ctTemperature: 40,
+    ctBurdenPercent: 50,
+    ctPrimaryCurrent: 600,
+    ctSecondaryCurrent: 1,
+    ctTemperature: 35,
     vtVoltageDriftPercent: 100,
     vtOutputVoltage: 100,
-    vtTemperature: 35,
+    vtTemperature: 30,
     frequencyHz: 50,
-    powerFactor: 0.98,
-    lineCurrent: 800,
-    harmonicsTHDPercent: 3,
-    timeOfSimulation: 24,
+    powerFactor: 0.99,
+    lineCurrent: 500,
+    harmonicsTHDPercent: 1.8,
+    timeOfSimulation: 12,
   })
 
   const [circuitBreakerInputs, setCircuitBreakerInputs] = useState({
-    sf6DensityPercent: 95,
-    sf6LeakRatePercentPerYear: 2,
-    sf6MoisturePPM: 100,
-    operationCountPercent: 50,
-    lastTripTimeMs: 45,
-    closeCoilResistance: 10,
-    poleTemperature: 35,
-    mechanismWearLevel: 30,
-    timeOfSimulation: 24,
+    sf6DensityPercent: 98,
+    sf6LeakRatePercentPerYear: 1,
+    sf6MoisturePPM: 60,
+    operationCountPercent: 30,
+    lastTripTimeMs: 40,
+    closeCoilResistance: 8,
+    poleTemperature: 30,
+    mechanismWearLevel: 20,
+    timeOfSimulation: 12,
   })
 
   const [isolatorInputs, setIsolatorInputs] = useState({
     status: "CLOSED",
     bladeAngleDeg: 0,
-    contactResistanceMicroOhm: 50,
-    motorTorqueNm: 200,
-    positionMismatchPercent: 1,
-    timeOfSimulation: 24,
+    contactResistanceMicroOhm: 40,
+    motorTorqueNm: 180,
+    positionMismatchPercent: 0.5,
+    timeOfSimulation: 12,
   })
 
   const [busbarInputs, setBusbarInputs] = useState({
-    busbarTemperature: 55,
-    ambientTemperature: 35,
-    busbarLoadPercent: 70,
-    busbarCurrentA: 2000,
-    jointHotspotTemp: 65,
-    impedanceMicroOhm: 50,
-    timeOfSimulation: 24,
+    busbarTemperature: 50,
+    ambientTemperature: 30,
+    busbarLoadPercent: 60,
+    busbarCurrentA: 1600,
+    jointHotspotTemp: 60,
+    impedanceMicroOhm: 45,
+    timeOfSimulation: 12,
   })
 
   const selectedAsset = useMemo(() => {
@@ -198,25 +198,118 @@ export function RunSimulationPage() {
     }
   }
 
-  const updateInput = (key: string, value: number | string) => {
+  // Get default values for each component type
+  const getDefaultInputs = (): Record<string, number | string> => {
     switch (selectedComponent) {
       case "transformer":
-        setTransformerInputs({ ...transformerInputs, [key]: value })
-        break
+        return {
+          va: 380,
+          vb: 380,
+          vc: 380,
+          ampa: 600,
+          ampb: 600,
+          ampc: 600,
+          frequency: 50,
+          loadUnbalancePercent: 3,
+          neutralCurrent: 20,
+          windingTemperature: 65,
+          hotspotTemperature: 75,
+          oilTemperature: 55,
+          ambientTemperature: 30,
+          oilLevel: 92,
+          oilMoisture: 12,
+          oilAcidity: 0.05,
+          dielectricStrength: 60,
+          hydrogenPPM: 60,
+          methanePPM: 20,
+          acetylenePPM: 2,
+          ethylenePPM: 10,
+          CO_PPM: 150,
+          transformerLoading: 65,
+          oltcTapPosition: 9,
+          oltcDeviation: 1,
+          oltcMotorStatus: "ON",
+          oltcOpsCount: 3000,
+          vibrationLevel: 2,
+          noiseLevel: 60,
+          buchholzAlarm: "NORMAL",
+          gasAccumulationRate: 2,
+          timeOfSimulation: 12,
+        }
       case "bayLines":
-        setBayLinesInputs({ ...bayLinesInputs, [key]: value })
-        break
+        return {
+          ctBurdenPercent: 50,
+          ctPrimaryCurrent: 600,
+          ctSecondaryCurrent: 1,
+          ctTemperature: 35,
+          vtVoltageDriftPercent: 100,
+          vtOutputVoltage: 100,
+          vtTemperature: 30,
+          frequencyHz: 50,
+          powerFactor: 0.99,
+          lineCurrent: 500,
+          harmonicsTHDPercent: 1.8,
+          timeOfSimulation: 12,
+        }
       case "circuitBreaker":
-        setCircuitBreakerInputs({ ...circuitBreakerInputs, [key]: value })
-        break
+        return {
+          sf6DensityPercent: 98,
+          sf6LeakRatePercentPerYear: 1,
+          sf6MoisturePPM: 60,
+          operationCountPercent: 30,
+          lastTripTimeMs: 40,
+          closeCoilResistance: 8,
+          poleTemperature: 30,
+          mechanismWearLevel: 20,
+          timeOfSimulation: 12,
+        }
       case "isolator":
-        setIsolatorInputs({ ...isolatorInputs, [key]: value })
-        break
+        return {
+          status: "CLOSED",
+          bladeAngleDeg: 0,
+          contactResistanceMicroOhm: 40,
+          motorTorqueNm: 180,
+          positionMismatchPercent: 0.5,
+          timeOfSimulation: 12,
+        }
       case "busbar":
-        setBusbarInputs({ ...busbarInputs, [key]: value })
-        break
+        return {
+          busbarTemperature: 50,
+          ambientTemperature: 30,
+          busbarLoadPercent: 60,
+          busbarCurrentA: 1600,
+          jointHotspotTemp: 60,
+          impedanceMicroOhm: 45,
+          timeOfSimulation: 12,
+        }
+      default:
+        return {}
     }
   }
+
+  // Fill in default values for any empty or missing fields
+  const getCurrentInputsWithDefaults = (inputs: Record<string, number | string>): Record<string, number | string> => {
+    const defaults = getDefaultInputs()
+    const result: Record<string, number | string> = { ...inputs }
+
+    // For each default field, use default if input is empty, null, undefined, or 0 (for numeric fields that shouldn't be 0)
+    Object.entries(defaults).forEach(([key, defaultValue]) => {
+      const currentValue = result[key]
+      
+      // If field is missing, empty string, null, undefined, or NaN, use default
+      if (
+        currentValue === undefined ||
+        currentValue === null ||
+        currentValue === "" ||
+        (typeof currentValue === "number" && (isNaN(currentValue) || currentValue === 0 && defaultValue !== 0))
+      ) {
+        result[key] = defaultValue
+      }
+    })
+
+    return result
+  }
+
 
   const buildAssetMetadata = () => {
     if (!substation) return null
@@ -240,92 +333,26 @@ export function RunSimulationPage() {
     }
   }
 
-  useEffect(() => {
-    if (!selectedAsset) return
+  // Simple input update function - no auto-population
+  const updateInput = (key: string, value: number | string) => {
     switch (selectedComponent) {
-      case "transformer": {
-        const dga = selectedAsset.DGA ?? {}
-        setTransformerInputs((prev) => {
-          const load = selectedAsset.ratedMVA ? Math.min(140, selectedAsset.ratedMVA / 5 + 70) : prev.transformerLoading
-          return {
-            ...prev,
-            transformerLoading: load,
-            oilTemperature: Number((toNumberOr(selectedAsset.oilTemperature, prev.oilTemperature) + Math.max(0, load - 75) * 0.4).toFixed(1)),
-            windingTemperature: Number((toNumberOr(selectedAsset.windingTemperature, prev.windingTemperature) + Math.max(0, load - 80) * 0.5).toFixed(1)),
-            hotspotTemperature: Number((toNumberOr(selectedAsset.hotspotTemperature, prev.hotspotTemperature) + Math.max(0, load - 85) * 0.6).toFixed(1)),
-            oilMoisture: toNumberOr(selectedAsset.oilMoisture_ppm, prev.oilMoisture),
-            hydrogenPPM: toNumberOr(dga.H2, prev.hydrogenPPM),
-            methanePPM: toNumberOr(dga.CH4, prev.methanePPM),
-            acetylenePPM: toNumberOr(dga.C2H2, prev.acetylenePPM),
-            CO_PPM: toNumberOr(dga.CO, prev.CO_PPM),
-            oltcTapPosition: toNumberOr(selectedAsset.oltc?.steps, prev.oltcTapPosition),
-            oltcOpsCount: toNumberOr(selectedAsset.oltcOpsCount, prev.oltcOpsCount),
-          }
-        })
+      case "transformer":
+        setTransformerInputs((prev) => ({ ...prev, [key]: value }))
         break
-      }
-      case "bayLines": {
-        setBayLinesInputs((prev) => {
-          const estimatedCurrent = toNumberOr(
-            selectedAsset.thermalLimit_A ? selectedAsset.thermalLimit_A * 0.4 : NaN,
-            prev.lineCurrent,
-          )
-          const impedanceReactance = toNumberOr(selectedAsset.impedance_R_X?.X, 2)
-          return {
-            ...prev,
-            lineCurrent: Number(estimatedCurrent.toFixed(0)),
-            ctBurdenPercent: Number(Math.min(120, Math.max(40, estimatedCurrent / 8)).toFixed(1)),
-            vtVoltageDriftPercent: toNumberOr(selectedAsset.lineVoltage_kV, prev.vtVoltageDriftPercent),
-            harmonicsTHDPercent: Number(Math.max(1.5, impedanceReactance * 1.5).toFixed(2)),
-          }
-        })
+      case "bayLines":
+        setBayLinesInputs((prev) => ({ ...prev, [key]: value }))
         break
-      }
-      case "circuitBreaker": {
-        setCircuitBreakerInputs((prev) => {
-          const sf6Percent = selectedAsset.sf6Pressure
-            ? (selectedAsset.sf6Pressure / 6.5) * 100
-            : prev.sf6DensityPercent
-          const opPercent = selectedAsset.opCount ? selectedAsset.opCount / 5 : prev.operationCountPercent
-          return {
-            ...prev,
-            sf6DensityPercent: Number(sf6Percent.toFixed(1)),
-            operationCountPercent: Number(Math.min(130, Math.max(20, opPercent)).toFixed(1)),
-            lastTripTimeMs: toNumberOr(selectedAsset.operatingTime_ms, prev.lastTripTimeMs),
-            poleTemperature: toNumberOr(selectedAsset.poleTemperature, prev.poleTemperature),
-          }
-        })
+      case "circuitBreaker":
+        setCircuitBreakerInputs((prev) => ({ ...prev, [key]: value }))
         break
-      }
-      case "isolator": {
-        setIsolatorInputs((prev) => ({
-          ...prev,
-          contactResistanceMicroOhm: toNumberOr(selectedAsset.contactResistanceMicroOhm, prev.contactResistanceMicroOhm),
-          motorTorqueNm: toNumberOr(selectedAsset.motorTorqueNm, prev.motorTorqueNm),
-        }))
+      case "isolator":
+        setIsolatorInputs((prev) => ({ ...prev, [key]: value }))
         break
-      }
-      case "busbar": {
-        setBusbarInputs((prev) => {
-          const capacity = toNumberOr(selectedAsset.capacity_A, prev.busbarCurrentA)
-          const loadPercent = selectedAsset.capacity_A
-            ? Math.min(140, Number((50 + selectedAsset.capacity_A / 150).toFixed(1)))
-            : prev.busbarLoadPercent
-          return {
-            ...prev,
-            busbarCurrentA: capacity,
-            busbarLoadPercent: loadPercent,
-            jointHotspotTemp: Number((toNumberOr(prev.jointHotspotTemp, 70) + Math.max(0, loadPercent - 85) * 0.5).toFixed(1)),
-            impedanceMicroOhm: toNumberOr(
-              selectedAsset.impedance_R_X?.R ? selectedAsset.impedance_R_X.R * 100 : NaN,
-              prev.impedanceMicroOhm,
-            ),
-          }
-        })
+      case "busbar":
+        setBusbarInputs((prev) => ({ ...prev, [key]: value }))
         break
-      }
     }
-  }, [selectedAsset, selectedComponent])
+  }
 
   const handleRunSimulation = async () => {
     if (!substation) {
@@ -335,7 +362,9 @@ export function RunSimulationPage() {
     setIsRunning(true)
 
     try {
-      const inputValues = getCurrentInputs()
+      // Get current inputs and fill in defaults for any empty/missing values
+      const rawInputs = getCurrentInputs()
+      const inputValues = getCurrentInputsWithDefaults(rawInputs)
       const timeOfSimulation = inputValues.timeOfSimulation as number
       const assetContext = selectedAsset
 
@@ -345,6 +374,28 @@ export function RunSimulationPage() {
         timeOfSimulation,
         assetContext,
       })
+
+      // Call backend ML predictor to get model-based health, RUL, risk, etc.
+      let mlPrediction: Record<string, any> | null = null
+      try {
+        const response = await fetch("/api/simulation-ml", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            componentType: selectedComponent,
+            substationId: substation.id,
+            inputValues,
+          }),
+        })
+        if (response.ok) {
+          mlPrediction = (await response.json()) as Record<string, any>
+          console.log("[Simulation] ML prediction received", mlPrediction)
+        } else {
+          console.warn("[Simulation] ML predictor HTTP error", await response.text())
+        }
+      } catch (mlError) {
+        console.warn("[Simulation] ML predictor failed, continuing with heuristic simulation only", mlError)
+      }
 
       // Save to Firebase / Mongo-backed video API
       const simulationsCollection = collection(db, `substations/${substation.id}/simulations`)
@@ -366,8 +417,10 @@ export function RunSimulationPage() {
         )
         try {
           const captureBlob = await modelViewerRef.current.captureVideo({
-            duration: 15,
-            timeline: result.timeline,
+            duration: 14,
+            // Use the same ML-aligned visual timeline that we persist so the
+            // captured video exactly reflects the predicted evolution.
+            timeline: visualTimeline,
           })
           if (captureBlob && captureBlob.size > 0) {
             console.log("[Simulation] Capture complete, size(bytes)=", captureBlob.size)
@@ -384,20 +437,263 @@ export function RunSimulationPage() {
         }
       }
 
+      const ml = mlPrediction ?? {}
+      // For analysis we want to rely only on ML outputs. If ML is unavailable,
+      // we leave these fields undefined so the frontend doesn't invent scores.
+      const resolvedOverallHealth =
+        typeof ml.trueHealth === "number"
+          ? ml.trueHealth
+          : typeof ml.overallHealth === "number"
+            ? ml.overallHealth
+            : undefined
+      const resolvedFaultProbability =
+        typeof ml.faultProbability === "number"
+          ? ml.faultProbability
+          : typeof ml.masterFailureProbability === "number"
+            ? ml.masterFailureProbability
+            : undefined
+
+      // Build an ML-aligned visualization timeline for 3D playback and analysis.
+      // When ML is available we want the trueHealth / stress / fault / aging
+      // evolution to follow the model outputs, not local heuristics.
+      const visualTimeline = (() => {
+        const original = result.timeline ?? []
+        if (!original.length || !mlPrediction) {
+          return original
+        }
+
+        const steps = original.length
+        const normalizePct = (value: unknown, fallback: number) => {
+          if (typeof value !== "number" || !Number.isFinite(value)) return fallback
+          if (value <= 1 && value >= 0) return value * 100
+          return value
+        }
+
+        const targetTrue = normalizePct(
+          typeof ml.trueHealth === "number" ? ml.trueHealth : ml.overallHealth,
+          100,
+        )
+        const targetStress = normalizePct(ml.stressScore, 0)
+        const targetFault = normalizePct(
+          typeof ml.faultProbability === "number" ? ml.faultProbability : ml.masterFailureProbability,
+          0,
+        )
+        const targetAging = normalizePct(ml.agingFactor, 100)
+
+        const startTrue = 100
+        const startStress = 5
+        const startFault = 5
+        const startAging = 100
+
+        return original.map((step, index) => {
+          const progress = steps <= 1 ? 1 : index / (steps - 1)
+          const ease = progress * progress * (3 - 2 * progress) // smoothstep
+
+          const trueHealth = startTrue + (targetTrue - startTrue) * ease
+          const stressScore = startStress + (targetStress - startStress) * ease
+          const faultProbability = startFault + (targetFault - startFault) * ease
+          const agingFactor = startAging + (targetAging - startAging) * ease
+
+          return {
+            ...step,
+            trueHealth,
+            stressScore,
+            faultProbability,
+            agingFactor,
+          }
+        })
+      })()
+
       const baseSimulationData = {
         substationId: substation.id,
         componentType: selectedComponent,
         assetMetadata: buildAssetMetadata(),
         inputValues,
         assetContext,
-        timeline: result.timeline,
+        // Use ML-aligned timeline for both analysis & video playback so
+        // geometry/parameter animation reflects the current prediction.
+        timeline: visualTimeline,
         finalState: result.finalState,
-        healthScores: result.healthScores,
-        detailedScores: result.detailedScores,
-        overallHealth: result.overallHealth,
-        faultProbability: result.faultProbability,
-        stressScore: result.stressScore,
-        agingFactor: result.agingFactor,
+        // Store health scores inverted (110 - value for most, 130 - value for transformer) for display purposes
+        healthScores: (() => {
+          const inverted: Record<string, number> = {}
+          const subtractValue = selectedComponent === "transformer" ? 130 : 110
+          Object.entries(result.healthScores).forEach(([key, value]) => {
+            if (typeof value === "number" && Number.isFinite(value)) {
+              inverted[key] = subtractValue - value
+            }
+          })
+          return inverted
+        })(),
+        // Detailed scores:
+        // - Start from heuristic engine output
+        // - For each component, prefer ML regression heads so that
+        //   the health cards reflect true model outputs.
+        // - Store inverted (110 - value) for display purposes
+        detailedScores: (() => {
+          const fromEngine = result.detailedScores ?? {}
+          const merged: Record<string, number> = { ...fromEngine }
+          if (ml) {
+            if (selectedComponent === "transformer") {
+              const map: Array<[keyof typeof ml, string]> = [
+                ["thermalHealth", "temperature"],
+                ["oilHealth", "oil"],
+                ["dgaHealth", "gas"],
+                ["electricalHealth", "electrical"],
+                ["oltcHealth", "oltc"],
+                ["mechanicalHealth", "mechanical"],
+              ]
+              for (const [mlKey, blueprintKey] of map) {
+                const value = ml[mlKey]
+                if (typeof value === "number" && Number.isFinite(value)) {
+                  const normalised = value <= 1 ? value * 100 : value
+                  merged[blueprintKey] = normalised
+                }
+              }
+            } else if (selectedComponent === "bayLines") {
+              const map: Array<[keyof typeof ml, string]> = [
+                ["ctHealth", "ct"],
+                ["vtHealth", "vt"],
+                ["pfStability", "powerFactor"],
+                ["frequencyStability", "frequency"],
+                ["harmonicsScore", "thd"],
+                ["lineStress", "lineCurrent"],
+              ]
+              for (const [mlKey, blueprintKey] of map) {
+                const value = ml[mlKey]
+                if (typeof value === "number" && Number.isFinite(value)) {
+                  const normalised = value <= 1 ? value * 100 : value
+                  merged[blueprintKey] = normalised
+                }
+              }
+            } else if (selectedComponent === "busbar") {
+              const map: Array<[keyof typeof ml, string]> = [
+                ["thermalStress", "thermal"],
+                ["hotspotIndex", "hotspot"],
+                ["loadMargin", "load"],
+                ["currentMargin", "current"],
+                ["impedanceRise", "impedance"],
+              ]
+              for (const [mlKey, blueprintKey] of map) {
+                const value = ml[mlKey]
+                if (typeof value === "number" && Number.isFinite(value)) {
+                  const normalised = value <= 1 ? value * 100 : value
+                  merged[blueprintKey] = normalised
+                }
+              }
+            } else if (selectedComponent === "isolator") {
+              const map: Array<[keyof typeof ml, string]> = [
+                ["statusHealth", "status"],
+                ["alignmentHealth", "alignment"],
+                ["contactHealth", "contact"],
+                ["torqueHealth", "torque"],
+                ["mismatchHealth", "mismatch"],
+              ]
+              for (const [mlKey, blueprintKey] of map) {
+                const value = ml[mlKey]
+                if (typeof value === "number" && Number.isFinite(value)) {
+                  const normalised = value <= 1 ? value * 100 : value
+                  merged[blueprintKey] = normalised
+                }
+              }
+            } else if (selectedComponent === "circuitBreaker") {
+              const map: Array<[keyof typeof ml, string]> = [
+                ["sf6Health", "sf6"],
+                ["operationDuty", "operations"],
+                ["timingIndex", "timing"],
+                ["coilIntegrity", "coilResistance"],
+                ["wearIndex", "mechanism"],
+              ]
+              for (const [mlKey, blueprintKey] of map) {
+                const value = ml[mlKey]
+                if (typeof value === "number" && Number.isFinite(value)) {
+                  const normalised = value <= 1 ? value * 100 : value
+                  merged[blueprintKey] = normalised
+                }
+              }
+            }
+          }
+          // Ensure "overall" mirrors ML true/overall health where available
+          if (typeof resolvedOverallHealth === "number" && Number.isFinite(resolvedOverallHealth)) {
+            const normalisedOverall =
+              resolvedOverallHealth <= 1 ? resolvedOverallHealth * 100 : resolvedOverallHealth
+            merged.overall = normalisedOverall
+          }
+          // Invert all values (110 - value for most, 130 - value for transformer) for storage
+          const inverted: Record<string, number> = {}
+          const subtractValue = selectedComponent === "transformer" ? 130 : 110
+          Object.entries(merged).forEach(([key, value]) => {
+            if (typeof value === "number" && Number.isFinite(value)) {
+              inverted[key] = subtractValue - value
+            }
+          })
+          return inverted
+        })(),
+        // Health & probability fields come only from ML when available
+        // Store overallHealth inverted (110 - value for most, 130 - value for transformer) for display
+        overallHealth: typeof resolvedOverallHealth === "number" && Number.isFinite(resolvedOverallHealth)
+          ? (() => {
+              const normalized = resolvedOverallHealth <= 1 ? resolvedOverallHealth * 100 : resolvedOverallHealth
+              const subtractValue = selectedComponent === "transformer" ? 130 : 110
+              return subtractValue - normalized // Store inverted
+            })()
+          : undefined,
+        // Store exact values for Stress Score, Fault Probability, Aging Factor
+        faultProbability: resolvedFaultProbability,
+        stressScore: typeof ml.stressScore === "number" ? ml.stressScore : undefined,
+        agingFactor: typeof ml.agingFactor === "number" ? ml.agingFactor : undefined,
+        // Mirror trueHealth for frontend convenience only if ML provided it
+        // Store inverted (110 - value for most, 130 - value for transformer) for display
+        trueHealth: typeof ml.trueHealth === "number"
+          ? (() => {
+              const normalized = ml.trueHealth <= 1 ? ml.trueHealth * 100 : ml.trueHealth
+              const subtractValue = selectedComponent === "transformer" ? 130 : 110
+              return subtractValue - normalized // Store inverted
+            })()
+          : typeof resolvedOverallHealth === "number" && Number.isFinite(resolvedOverallHealth)
+            ? (() => {
+                const normalized = resolvedOverallHealth <= 1 ? resolvedOverallHealth * 100 : resolvedOverallHealth
+                const subtractValue = selectedComponent === "transformer" ? 130 : 110
+                return subtractValue - normalized // Store inverted
+              })()
+            : undefined,
+        // Persist additional ML metadata if present
+        riskScore: typeof ml.riskScore === "number" ? ml.riskScore : undefined,
+        masterFailureProbability:
+          typeof ml.masterFailureProbability === "number" ? ml.masterFailureProbability : undefined,
+        prob_30days: typeof ml.prob_30days === "number" ? ml.prob_30days : undefined,
+        prob_90days: typeof ml.prob_90days === "number" ? ml.prob_90days : undefined,
+        prob_180days: typeof ml.prob_180days === "number" ? ml.prob_180days : undefined,
+        rul_optimistic_months:
+          typeof ml.rul_optimistic_months === "number" ? ml.rul_optimistic_months : undefined,
+        rul_conservative_months:
+          typeof ml.rul_conservative_months === "number" ? ml.rul_conservative_months : undefined,
+        // Persist correlation heads when available so the analysis page can
+        // render them directly instead of recomputing synthetic values.
+        corr_load_hotspot_strength:
+          typeof ml.corr_load_hotspot_strength === "number" ? ml.corr_load_hotspot_strength : undefined,
+        corr_moisture_dielectric_strength:
+          typeof ml.corr_moisture_dielectric_strength === "number"
+            ? ml.corr_moisture_dielectric_strength
+            : undefined,
+        corr_gas_hotspot_strength:
+          typeof ml.corr_gas_hotspot_strength === "number" ? ml.corr_gas_hotspot_strength : undefined,
+        corr_pf_lineheating_strength:
+          typeof ml.corr_pf_lineheating_strength === "number" ? ml.corr_pf_lineheating_strength : undefined,
+        corr_thd_stress_strength:
+          typeof ml.corr_thd_stress_strength === "number" ? ml.corr_thd_stress_strength : undefined,
+        corr_temp_resistance_strength:
+          typeof ml.corr_temp_resistance_strength === "number" ? ml.corr_temp_resistance_strength : undefined,
+        corr_load_jointtemp_strength:
+          typeof ml.corr_load_jointtemp_strength === "number" ? ml.corr_load_jointtemp_strength : undefined,
+        corr_torque_contact_strength:
+          typeof ml.corr_torque_contact_strength === "number" ? ml.corr_torque_contact_strength : undefined,
+        corr_sf6_temperature_strength:
+          typeof ml.corr_sf6_temperature_strength === "number" ? ml.corr_sf6_temperature_strength : undefined,
+        corr_operations_wear_strength:
+          typeof ml.corr_operations_wear_strength === "number"
+            ? ml.corr_operations_wear_strength
+            : undefined,
         transformerHealth: result.transformerHealth,
         bayLineHealth: result.bayLineHealth,
         breakerHealth: result.breakerHealth,

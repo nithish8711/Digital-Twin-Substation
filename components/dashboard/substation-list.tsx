@@ -139,7 +139,7 @@ export function SubstationList() {
             </div>
           </CardContent>
           <CardFooter className="bg-slate-50/50 p-3 flex gap-2">
-            <Button asChild className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+            <Button asChild className="flex-1" size="sm">
               <Link href={`/asset-details/${substation.id}`}>
                 <Eye className="mr-2 h-4 w-4" /> View
               </Link>
@@ -179,7 +179,6 @@ export function SubstationList() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 text-white"
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

@@ -128,10 +128,10 @@ export const PARAMETER_THRESHOLDS: Record<
     },
     oilMoisture: { warning: 25, critical: 35, unit: "ppm", healthyText: "<25 ppm" },
     hydrogenPPM: {
-      warning: 300,
-      critical: 500,
+      warning: 250,
+      critical: 300,
       unit: "ppm",
-      healthyText: "<300 ppm",
+      healthyText: "<250 ppm",
     },
     methanePPM: {
       warning: 80,
@@ -140,22 +140,22 @@ export const PARAMETER_THRESHOLDS: Record<
       healthyText: "<80 ppm",
     },
     acetylenePPM: {
-      warning: 20,
-      critical: 35,
+      warning: 3,
+      critical: 5,
       unit: "ppm",
-      healthyText: "<20 ppm",
+      healthyText: "<3 ppm",
     },
     transformerLoading: {
-      warning: 110,
-      critical: 125,
+      warning: 100,
+      critical: 110,
       unit: "%",
-      healthyText: "<110%",
+      healthyText: "<100%",
     },
     tapPosition: {
-      warning: 8,
-      critical: 12,
+      warning: 14,
+      critical: 16,
       unit: "steps",
-      healthyText: "±8 steps",
+      healthyText: "1-17 steps",
     },
     oltcDeviation: {
       warning: 6,
@@ -263,16 +263,28 @@ export const PARAMETER_THRESHOLDS: Record<
   },
   isolator: {
     contactResistanceMicroOhm: {
-      warning: 150,
-      critical: 250,
+      warning: 200,
+      critical: 500,
       unit: "µΩ",
-      healthyText: "<150 µΩ",
+      healthyText: "<200 µΩ",
     },
     motorTorqueNm: {
-      warning: 260,
-      critical: 320,
+      warning: 200,
+      critical: 250,
       unit: "Nm",
-      healthyText: "<260 Nm",
+      healthyText: "<200 Nm",
+    },
+    operatingTimeMs: {
+      warning: 300,
+      critical: 500,
+      unit: "ms",
+      healthyText: "<300 ms",
+    },
+    motorCurrent: {
+      warning: 10,
+      critical: 15,
+      unit: "A",
+      healthyText: "<10 A",
     },
     positionMismatchPercent: {
       warning: 3,
@@ -289,10 +301,10 @@ export const PARAMETER_THRESHOLDS: Record<
   },
   busbar: {
     busbarTemperature: {
-      warning: 80,
-      critical: 95,
+      warning: 70,
+      critical: 90,
       unit: "°C",
-      healthyText: "<80°C",
+      healthyText: "<70°C",
     },
     jointHotspotTemp: {
       warning: 95,

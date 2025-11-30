@@ -73,7 +73,7 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     name: "Bus Voltage",
     meaning: "Voltage magnitude measured on the transmission bus",
     unit: "kV",
-    typicalRange: "220-420 kV",
+    typicalRange: "380-420 kV",
     sensorType: "Voltage Transformer (PT/CVT)",
     iec61850LogicalNode: "MMXU.Voltage",
     useCase: "Assess load flow and voltage profile"
@@ -118,7 +118,7 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     name: "Total Harmonic Distortion",
     meaning: "Aggregate distortion level of the waveform",
     unit: "%",
-    typicalRange: "0-8%",
+    typicalRange: "0-5%",
     sensorType: "Power Quality Meter",
     iec61850LogicalNode: "PQTHD",
     useCase: "Power quality supervision"
@@ -192,7 +192,7 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     name: "Oil Level Gauge",
     meaning: "The level of insulating oil in the transformer tank",
     unit: "%",
-    typicalRange: "30-100%",
+    typicalRange: "90-100%",
     sensorType: "Float Switch / Level Sensor",
     iec61850LogicalNode: "YPTR",
     useCase: "Prevent transformer damage from low oil levels"
@@ -201,7 +201,7 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     name: "Oil Temperature",
     meaning: "Temperature of the transformer insulating oil",
     unit: "°C",
-    typicalRange: "40-95°C",
+    typicalRange: "30-80°C",
     sensorType: "RTD / Thermocouple",
     iec61850LogicalNode: "YPTR",
     useCase: "Monitor thermal conditions and prevent overheating"
@@ -219,7 +219,7 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     name: "Winding Temperature",
     meaning: "Temperature of transformer windings during operation",
     unit: "°C",
-    typicalRange: "60-130°C",
+    typicalRange: "40-90°C",
     sensorType: "Winding Temperature Indicator (WTI)",
     iec61850LogicalNode: "YPTR",
     useCase: "Protect windings from thermal damage"
@@ -403,14 +403,41 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     iec61850LogicalNode: "MMXU",
     useCase: "Monitor busbar loading and prevent overload"
   },
+  busCurrent: {
+    name: "Bus Current",
+    meaning: "Measured current flowing through the bus section",
+    unit: "A",
+    typicalRange: "100-5000 A",
+    sensorType: "Current Transformer (CT)",
+    iec61850LogicalNode: "MMXU",
+    useCase: "Track thermal loading margin of the bus"
+  },
   busbarTemperature: {
     name: "Busbar Temperature",
     meaning: "Temperature of busbar conductors during operation",
     unit: "°C",
-    typicalRange: "30-90°C",
+    typicalRange: "40-90°C",
     sensorType: "Thermocouple / RTD",
     iec61850LogicalNode: "MMXU",
     useCase: "Prevent thermal damage from excessive loading"
+  },
+  jointHotspotTemp: {
+    name: "Joint Hotspot Temperature",
+    meaning: "Hotspot temperature measured at busbar joints or splices",
+    unit: "°C",
+    typicalRange: "60-120°C",
+    sensorType: "Infrared sensor / RTD",
+    iec61850LogicalNode: "MMXU",
+    useCase: "Detect localized overheating at bus connections"
+  },
+  impedanceMicroOhm: {
+    name: "Joint Impedance",
+    meaning: "Micro-ohmic resistance of busbar joints indicating contact quality",
+    unit: "µΩ",
+    typicalRange: "30-80 µΩ",
+    sensorType: "Micro-ohm meter",
+    iec61850LogicalNode: "MMXU",
+    useCase: "Monitor joint degradation and oxidation over time"
   },
   busDifferentialCurrent: {
     name: "Bus Differential Current",

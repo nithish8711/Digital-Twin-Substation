@@ -1,5 +1,6 @@
 // Transformer Fallback Model using Three.js
 import * as THREE from "three"
+import { getGlowColor } from "@/lib/live-trend/glow-utils"
 
 const TANK_COLOR = 0x374151 // Darker Grey for main tank
 const METAL_COLOR = 0x718096 // Standard Grey components
@@ -23,16 +24,16 @@ function getOilLevelStatus(level: number): { color: string } {
 }
 
 function getOilTempStatus(temp: number): { color: string } {
-  if (temp < 65) return { color: "#0AB9FF" } // Blue
-  if (temp < 85) return { color: "#FFB547" } // Amber
-  if (temp < 95) return { color: "#FF8A2A" } // Orange
+  if (temp < 30) return { color: "#0AB9FF" } // Blue
+  if (temp < 55) return { color: "#FFB547" } // Amber
+  if (temp < 70) return { color: "#FF8A2A" } // Orange
   return { color: "#FF376B" } // Red
 }
 
 function getWindingTempStatus(temp: number): { color: string } {
-  if (temp < 90) return { color: "#0AB9FF" } // Blue
-  if (temp < 110) return { color: "#FFB547" } // Amber
-  if (temp < 130) return { color: "#FF8A2A" } // Orange
+  if (temp < 40) return { color: "#0AB9FF" } // Blue
+  if (temp < 65) return { color: "#FFB547" } // Amber
+  if (temp < 80) return { color: "#FF8A2A" } // Orange
   return { color: "#FF376B" } // Red
 }
 
@@ -62,7 +63,7 @@ function createRadiator(
   position: [number, number, number],
   tempColor: string,
   isActive: boolean,
-  orientation: "left" | "right" | "back" = "left"
+  orientation: "left" | "right" | "back" = "left",
 ): THREE.Group {
   const group = new THREE.Group()
   group.position.set(...position)
@@ -129,11 +130,7 @@ function createRadiator(
   return group
 }
 
-function createBushing(
-  position: [number, number, number],
-  scale: number,
-  color: string
-): THREE.Group {
+function createBushing(position: [number, number, number], scale: number, color: string): THREE.Group {
   const group = new THREE.Group()
   group.position.set(...position)
   group.scale.set(scale, scale, scale)
@@ -231,7 +228,7 @@ function createCoreAndWindings(tempColor: string, tempValue: number): THREE.Grou
   return group
 }
 
-function createConservator(oilLevelStatus: { color: string }): THREE.Group {
+function createConservator(oilLevelStatus: { color: string }, highlightColor?: string): THREE.Group {
   const group = new THREE.Group()
   group.position.set(0, 3.6, 1.0)
 
@@ -286,13 +283,14 @@ function createConservator(oilLevelStatus: { color: string }): THREE.Group {
   gaugeBase.rotation.x = Math.PI / 2
   gaugeGroup.add(gaugeBase)
 
+  const gaugeColor = highlightColor ? new THREE.Color(highlightColor) : new THREE.Color(oilLevelStatus.color)
   const gaugeLevel = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2, 0.2, 0.05),
     new THREE.MeshStandardMaterial({
-      color: new THREE.Color(oilLevelStatus.color),
-      emissive: new THREE.Color(oilLevelStatus.color),
-      emissiveIntensity: 1,
-    })
+      color: gaugeColor,
+      emissive: gaugeColor,
+      emissiveIntensity: 1.2,
+    }),
   )
   gaugeLevel.rotation.x = Math.PI / 2
   gaugeLevel.position.set(0, 0, 0.06)
@@ -417,6 +415,17 @@ export function createTransformerFallbackModel(
   const busbarStatus = getBusbarStatus(metrics.busbarLoad)
   const fansActive = metrics.oilTemp > 85
 
+  const trueHealthValue = typeof glowData.trueHealth === "number" ? Number(glowData.trueHealth) : 100
+  const stressScoreValue = typeof glowData.stressScore === "number" ? Number(glowData.stressScore) : 0
+  const faultProbabilityValue =
+    typeof glowData.faultProbability === "number" ? Number(glowData.faultProbability) : 0
+  const agingFactorValue = typeof glowData.agingFactor === "number" ? Number(glowData.agingFactor) : 100
+
+  const trueHealthColor = getGlowColor("trueHealth", trueHealthValue) ?? windingTempStatus.color
+  const stressColor = getGlowColor("stressScore", stressScoreValue) ?? oilTempStatus.color
+  const faultColor = getGlowColor("faultProbability", faultProbabilityValue) ?? busbarStatus.color
+  const agingColor = getGlowColor("agingFactor", agingFactorValue) ?? oilLevelStatus.color
+
   // Determine tank glow intensity
   let tankGlowIntensity = 0.2
   if (metrics.windingTemp > 110) tankGlowIntensity = 0.8
@@ -431,10 +440,10 @@ export function createTransformerFallbackModel(
       opacity: 0.6,
       roughness: 0.3,
       metalness: 0.6,
-      emissive: new THREE.Color(windingTempStatus.color),
+      emissive: new THREE.Color(trueHealthColor),
       emissiveIntensity: showGlow ? tankGlowIntensity : 0,
       depthWrite: false,
-    })
+    }),
   )
   mainTank.position.set(0, 1.75, 0)
   mainTank.castShadow = true
@@ -442,60 +451,57 @@ export function createTransformerFallbackModel(
   group.add(mainTank)
 
   // Internal Core & Windings
-  const coreAndWindings = createCoreAndWindings(
-    windingTempStatus.color,
-    metrics.windingTemp
-  )
+  const coreAndWindings = createCoreAndWindings(stressColor, metrics.windingTemp)
   group.add(coreAndWindings)
 
   // Conservator Tank
-  const conservator = createConservator(oilLevelStatus)
+  const conservator = createConservator(oilLevelStatus, agingColor)
   group.add(conservator)
 
   // Radiators - Left Bank
   const leftRadiator1 = createRadiator(
     [-2.1, 1.75, 0.8],
-    oilTempStatus.color,
+    stressColor,
     fansActive,
-    "left"
+    "left",
   )
   group.add(leftRadiator1)
 
   const leftRadiator2 = createRadiator(
     [-2.1, 1.75, -0.8],
-    oilTempStatus.color,
+    stressColor,
     fansActive,
-    "left"
+    "left",
   )
   group.add(leftRadiator2)
 
   // Radiators - Right Bank
   const rightRadiator = createRadiator(
     [2.1, 1.75, -0.8],
-    oilTempStatus.color,
+    stressColor,
     fansActive,
-    "right"
+    "right",
   )
   group.add(rightRadiator)
 
   // HV Terminals (Tall)
-  const hvTerminal1 = createBushing([-1, 3.5, 0], 1, busbarStatus.color)
+  const hvTerminal1 = createBushing([-1, 3.5, 0], 1, faultColor)
   group.add(hvTerminal1)
 
-  const hvTerminal2 = createBushing([0, 3.5, 0], 1, busbarStatus.color)
+  const hvTerminal2 = createBushing([0, 3.5, 0], 1, faultColor)
   group.add(hvTerminal2)
 
-  const hvTerminal3 = createBushing([1, 3.5, 0], 1, busbarStatus.color)
+  const hvTerminal3 = createBushing([1, 3.5, 0], 1, faultColor)
   group.add(hvTerminal3)
 
   // LV Terminals (Short)
-  const lvTerminal1 = createBushing([-0.8, 3.5, 1.5], 0.6, busbarStatus.color)
+  const lvTerminal1 = createBushing([-0.8, 3.5, 1.5], 0.6, faultColor)
   group.add(lvTerminal1)
 
-  const lvTerminal2 = createBushing([0, 3.5, 1.5], 0.6, busbarStatus.color)
+  const lvTerminal2 = createBushing([0, 3.5, 1.5], 0.6, faultColor)
   group.add(lvTerminal2)
 
-  const lvTerminal3 = createBushing([0.8, 3.5, 1.5], 0.6, busbarStatus.color)
+  const lvTerminal3 = createBushing([0.8, 3.5, 1.5], 0.6, faultColor)
   group.add(lvTerminal3)
 
   // OLTC Tap Changer

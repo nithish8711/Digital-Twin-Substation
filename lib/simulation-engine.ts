@@ -21,6 +21,10 @@ export interface SimulationResult {
     time: number
     state: Record<string, number | string>
     healthScore: number
+    trueHealth?: number
+    stressScore?: number
+    faultProbability?: number
+    agingFactor?: number
   }>
   finalState: Record<string, number | string>
   healthScores: Record<string, number>
@@ -49,18 +53,18 @@ export interface SimulationResult {
 
 const COMPONENT_BASELINES: Record<ComponentType, Record<string, number | string>> = {
   transformer: {
-    oilLevel: 80,
-    oilTemperature: 65,
-    windingTemperature: 75,
+    oilLevel: 95,
+    oilTemperature: 55,
+    windingTemperature: 65,
     hotspotTemperature: 90,
-    oilMoisture: 18,
-    hydrogenPPM: 120,
+    oilMoisture: 17.5,
+    hydrogenPPM: 155,
     methanePPM: 45,
     acetylenePPM: 5,
     oilDielectricStrength: 55,
     dielectricStrength: 55,
-    transformerLoading: 85,
-    tapPosition: 0,
+    transformerLoading: 65,
+    tapPosition: 9,
     oltcDeviation: 1,
     oltcOpsCount: 5000,
     vibrationLevel: 3,
@@ -93,10 +97,11 @@ const COMPONENT_BASELINES: Record<ComponentType, Record<string, number | string>
     bladeAngleDeg: 2,
   },
   busbar: {
-    busbarTemperature: 55,
+    busbarTemperature: 65,
     jointHotspotTemp: 70,
     busbarLoadPercent: 72,
-    busbarCurrentA: 2100,
+    busbarCurrentA: 2550,
+    busVoltage: 400,
     impedanceMicroOhm: 50,
   },
 }
@@ -179,8 +184,8 @@ function deriveAssetSignals(componentType: ComponentType, asset?: Record<string,
       signals.oilDielectricStrength = statusScore - 2
       signals.transformerLoading = loadPercent
       signals.hotspotTemperature = 95 + Math.max(0, loadPercent - 90) * 0.8
-      signals.windingTemperature = 80 + Math.max(0, loadPercent - 80) * 0.6
-      signals.oilTemperature = 65 + Math.max(0, loadPercent - 75) * 0.4
+      signals.windingTemperature = 65 + Math.max(0, loadPercent - 80) * 0.6
+      signals.oilTemperature = 55 + Math.max(0, loadPercent - 75) * 0.4
       signals.tapPosition = safeNumber(context.oltc?.steps, 0)
       signals.oltcDeviation = Math.max(0.5, safeNumber(context.oltcDeviation, (signals.tapPosition as number) * 0.05 || 1))
       signals.oltcOpsCount = safeNumber(context.oltcOpsCount ?? context.oltc?.opsCount, 5000)
@@ -232,7 +237,7 @@ function deriveAssetSignals(componentType: ComponentType, asset?: Record<string,
       const loadCurrent = capacity * 0.6
       signals.busbarCurrentA = Number(loadCurrent.toFixed(0))
       signals.busbarLoadPercent = Number(Math.min(140, (loadCurrent / capacity) * 100 + 15).toFixed(1))
-      signals.busbarTemperature = Number((55 + Math.max(0, (signals.busbarLoadPercent as number) - 80) * 0.4).toFixed(1))
+      signals.busbarTemperature = Number((65 + Math.max(0, (signals.busbarLoadPercent as number) - 80) * 0.4).toFixed(1))
       signals.jointHotspotTemp = Number((signals.busbarTemperature as number + 12).toFixed(1))
       signals.impedanceMicroOhm = Number(
         Math.max(30, safeNumber(context.impedance_R_X?.R, 0.05) * 100).toFixed(1),
@@ -260,8 +265,8 @@ function computeComponentScorePack(
 
   switch (componentType) {
     case "transformer": {
-      const windingTemp = get("windingTemperature", 80)
-      const oilTemp = get("oilTemperature", 65)
+      const windingTemp = get("windingTemperature", 65)
+      const oilTemp = get("oilTemperature", 55)
       const hotspotTemp = get("hotspotTemperature", 90)
       const moisture = get("oilMoisture", 15)
       const oilLevel = clamp01(get("oilLevel", 80) / 100)
@@ -280,8 +285,8 @@ function computeComponentScorePack(
       const noise = get("noiseLevel", 60)
       const motorStatus = String(state.oltcMotorStatus ?? "ON").toUpperCase()
 
-      const windingScore = clamp01(1 - (windingTemp - 70) / 60)
-      const oilTempScore = clamp01(1 - (oilTemp - 55) / 55)
+      const windingScore = clamp01(1 - (windingTemp - 40) / 50)
+      const oilTempScore = clamp01(1 - (oilTemp - 30) / 50)
       const hotspotScore = clamp01(1 - (hotspotTemp - 90) / 90)
       const tempScore = average([windingScore, oilTempScore, hotspotScore])
 
@@ -463,14 +468,14 @@ function computeComponentScorePack(
       }
     }
     case "busbar": {
-      const busbarTemperature = get("busbarTemperature", 60)
+      const busbarTemperature = get("busbarTemperature", 65)
       const jointHotspot = get("jointHotspotTemp", 75)
       const loadPercent = get("busbarLoadPercent", 70)
       const busbarCurrent = get("busbarCurrentA", 1800)
       const capacity = Math.max(get("capacity_A", 3000), 1)
       const impedanceMicroOhm = get("impedanceMicroOhm", 60)
 
-      const tempScore = clamp01(1 - (busbarTemperature - 55) / 65)
+      const tempScore = clamp01(1 - (busbarTemperature - 40) / 50)
       const hotspotScore = clamp01(1 - (jointHotspot - 55) / 95)
       const loadScore = clamp01(1 - loadPercent / 140)
       const currentScore = clamp01(1 - busbarCurrent / capacity)
@@ -525,10 +530,37 @@ export async function runSimulation(input: SimulationInput): Promise<SimulationR
     const time = Number(((step / steps) * timeOfSimulation).toFixed(2))
     currentState = computeNextState(componentType, currentState, time, timeOfSimulation)
     const healthScore = calculateHealthScore(componentType, currentState)
+    
+    // Calculate dynamic parameters for each timeline step
+    const stepScorePack = computeComponentScorePack(componentType, currentState)
+    const stepInstallYear = getInstallationYear(assetContext, currentState)
+    const stepAgeYears = Math.max(0, new Date().getFullYear() - stepInstallYear)
+    const stepAgeFactor = clamp01(1 - stepAgeYears / 40)
+    const stepTrueHealth = clamp01(0.7 * stepScorePack.componentHealth + 0.3 * stepAgeFactor)
+    const stepStressScore = clamp01(stepScorePack.stressIndicators)
+    const stepFaultProbability = clamp01(
+      1 - stepScorePack.componentHealth + stepScorePack.stressIndicators * 0.3 + stepScorePack.abnormalDga * 0.2 + stepScorePack.temperatureSeverity * 0.3,
+    )
+    
+    // Apply degradation over time for dynamic simulation
+    const progressRatio = step / steps
+    const degradationFactor = 1 - (progressRatio * 0.1) // 10% degradation over simulation time
+    const stressFactor = progressRatio * 0.15 // 15% stress increase over time
+    
+    const dynamicTrueHealth = Math.max(0, stepTrueHealth * degradationFactor)
+    const dynamicStressScore = Math.min(1, stepStressScore + stressFactor)
+    const dynamicFaultProbability = Math.min(1, stepFaultProbability + (progressRatio * 0.2))
+    const dynamicAgingFactor = Math.max(0, stepAgeFactor * (1 - progressRatio * 0.05))
+    
     timeline.push({
       time,
       state: { ...currentState },
       healthScore,
+      // Enhanced parameters for visualization
+      trueHealth: dynamicTrueHealth * 100, // Convert to percentage
+      stressScore: dynamicStressScore * 100,
+      faultProbability: dynamicFaultProbability * 100,
+      agingFactor: dynamicAgingFactor * 100,
     })
   }
 
@@ -599,11 +631,11 @@ function computeNextState(
       updated.transformerLoading = Number(stabilizedLoad.toFixed(1))
 
       const ambient = clampRange(asNumber(updated.ambientTemperature, 32), 15, 55)
-      const oilTarget = 58 + (stabilizedLoad - 70) * 0.35 + (ambient - 25) * 0.2
-      updated.oilTemperature = smoothToward(asNumber(updated.oilTemperature, 65), oilTarget)
+      const oilTarget = 55 + (stabilizedLoad - 70) * 0.35 + (ambient - 25) * 0.2
+      updated.oilTemperature = smoothToward(asNumber(updated.oilTemperature, 55), oilTarget)
 
       const windingTarget = oilTarget + 7
-      updated.windingTemperature = smoothToward(asNumber(updated.windingTemperature, 75), windingTarget)
+      updated.windingTemperature = smoothToward(asNumber(updated.windingTemperature, 65), windingTarget)
 
       const hotspotTarget = windingTarget + 6 + Math.max(0, stabilizedLoad - 95) * 0.2
       updated.hotspotTemperature = smoothToward(asNumber(updated.hotspotTemperature, 90), hotspotTarget)
@@ -712,8 +744,8 @@ function computeNextState(
       updated.busbarLoadPercent = Number(loadValue.toFixed(1))
       const currentBase = clampRange(asNumber(updated.busbarCurrentA, 2100), 1200, 3200)
       updated.busbarCurrentA = Number((currentBase + oscillate(progress, 60)).toFixed(0))
-      const busTempTarget = 55 + (loadValue - 70) * 0.35
-      updated.busbarTemperature = smoothToward(asNumber(updated.busbarTemperature, 55), busTempTarget)
+      const busTempTarget = 65 + (loadValue - 70) * 0.35
+      updated.busbarTemperature = smoothToward(asNumber(updated.busbarTemperature, 65), busTempTarget)
       const hotspotTarget = busTempTarget + 8
       updated.jointHotspotTemp = smoothToward(asNumber(updated.jointHotspotTemp, 70), hotspotTarget)
       const impedanceBase = clampRange(asNumber(updated.impedanceMicroOhm, 50), 30, 70)

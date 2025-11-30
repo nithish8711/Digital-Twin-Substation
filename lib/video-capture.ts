@@ -58,8 +58,8 @@ export async function captureVideoFromCanvas({
 
     const recorderOptions: MediaRecorderOptions =
       preferredMime !== null
-        ? { mimeType: preferredMime, videoBitsPerSecond: 3_000_000 }
-        : { videoBitsPerSecond: 3_000_000 }
+        ? { mimeType: preferredMime, videoBitsPerSecond: 8_000_000 } // Increased bitrate for better quality
+        : { videoBitsPerSecond: 8_000_000 }
 
     let mediaRecorder: MediaRecorder
     try {

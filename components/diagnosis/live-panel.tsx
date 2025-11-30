@@ -79,12 +79,6 @@ export function LivePanel({ component, parameterStates, trendHistory, liveTimest
             <Clock className="h-3.5 w-3.5" />
             {liveTimestamp ? new Date(liveTimestamp).toLocaleTimeString() : "N/A"}
           </span>
-          {liveSource && (
-            <span className="inline-flex items-center gap-1 capitalize">
-              <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />
-              {liveSource} source
-            </span>
-          )}
         </div>
       </CardHeader>
       <CardContent className="max-h-[520px] overflow-auto rounded-b-2xl">

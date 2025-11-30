@@ -14,7 +14,7 @@ export function RunSimulationButton({ substation, isRunning, onRun }: RunSimulat
   return (
     <Button
       onClick={onRun}
-      className="w-full bg-purple-600 hover:bg-purple-700"
+      className="w-full"
       disabled={!substation || isRunning}
     >
       {isRunning ? (

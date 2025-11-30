@@ -81,7 +81,6 @@ export function SubstationSearchBar({ onSubstationSelect }: SubstationSearchBarP
           </div>
           <Button
             onClick={handleSearch}
-            className="bg-blue-600 hover:bg-blue-700"
             disabled={isLoading}
           >
             {isLoading ? (

@@ -78,15 +78,15 @@ export function getGlowColor(
   switch (parameter) {
     // Transformer Parameters
     case "oilLevel":
-      if (numValue > 70) return "#0AB9FF" // Blue
-      if (numValue >= 50) return "#FFB547" // Amber
-      if (numValue >= 30) return "#FF8A2A" // Orange
+      if (numValue >= 95) return "#0AB9FF" // Blue
+      if (numValue >= 92) return "#FFB547" // Amber
+      if (numValue >= 90) return "#FF8A2A" // Orange
       return "#FF376B" // Red
 
     case "oilTemperature":
-      if (numValue < 65) return "#0AB9FF" // Blue
-      if (numValue < 85) return "#FFB547" // Amber
-      if (numValue < 95) return "#FF8A2A" // Orange
+      if (numValue < 30) return "#0AB9FF" // Blue
+      if (numValue < 55) return "#FFB547" // Amber
+      if (numValue < 70) return "#FF8A2A" // Orange
       return "#FF376B" // Red
 
     case "gasLevel":
@@ -96,9 +96,9 @@ export function getGlowColor(
       return "#FF376B" // Red
 
     case "windingTemperature":
-      if (numValue < 90) return "#0AB9FF" // Blue
-      if (numValue < 110) return "#FFB547" // Amber
-      if (numValue < 130) return "#FF8A2A" // Orange
+      if (numValue < 40) return "#0AB9FF" // Blue
+      if (numValue < 65) return "#FFB547" // Amber
+      if (numValue < 80) return "#FF8A2A" // Orange
       return "#FF376B" // Red
 
     case "tapPosition":
@@ -115,9 +115,9 @@ export function getGlowColor(
       return "#FF376B" // Red
 
     case "busbarTemperature":
-      if (numValue < 55) return "#0AB9FF" // Blue
-      if (numValue < 70) return "#FFB547" // Amber
-      if (numValue < 90) return "#FF8A2A" // Orange
+      if (numValue < 40) return "#0AB9FF" // Blue
+      if (numValue < 65) return "#FFB547" // Amber
+      if (numValue < 80) return "#FF8A2A" // Orange
       return "#FF376B" // Red
 
     // Bay Lines Parameters
@@ -174,6 +174,39 @@ export function getGlowColor(
     case "isolatorStatus":
       if (value === "Open" || value === "open") return "#808080" // Gray
       return "#00FF00" // Green
+
+    // New simulation parameters
+    case "trueHealth":
+      // Green (100%) -> Yellow (70%) -> Orange (40%) -> Red (0%)
+      if (numValue >= 80) return "#10b981" // Green
+      if (numValue >= 60) return "#f59e0b" // Yellow
+      if (numValue >= 40) return "#f97316" // Orange
+      if (numValue >= 20) return "#ef4444" // Red
+      return "#dc2626" // Dark Red
+
+    case "stressScore":
+      // Blue (0%) -> Yellow (30%) -> Orange (60%) -> Red (100%)
+      if (numValue <= 20) return "#3b82f6" // Blue
+      if (numValue <= 40) return "#06b6d4" // Cyan
+      if (numValue <= 60) return "#f59e0b" // Yellow
+      if (numValue <= 80) return "#f97316" // Orange
+      return "#ef4444" // Red
+
+    case "faultProbability":
+      // Green (0%) -> Yellow (25%) -> Orange (50%) -> Red (100%)
+      if (numValue <= 15) return "#10b981" // Green
+      if (numValue <= 35) return "#84cc16" // Light Green
+      if (numValue <= 55) return "#f59e0b" // Yellow
+      if (numValue <= 75) return "#f97316" // Orange
+      return "#ef4444" // Red
+
+    case "agingFactor":
+      // Bright (100%) -> Dim (0%)
+      if (numValue >= 80) return "#f8fafc" // White/Bright
+      if (numValue >= 60) return "#cbd5e1" // Light Gray
+      if (numValue >= 40) return "#94a3b8" // Gray
+      if (numValue >= 20) return "#64748b" // Dark Gray
+      return "#374151" // Very Dark Gray
 
     default:
       return null

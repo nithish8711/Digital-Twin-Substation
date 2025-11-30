@@ -6,16 +6,16 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "Power flow health across each outgoing feeder and bus section.",
     category: "primary",
     parameters: [
-      { key: "busVoltage", label: "Bus Voltage", unit: "kV", min: 220, max: 420, minAlarm: 200, maxAlarm: 450, sensor: "PT / CVT", iecLn: "MMXU.Voltage" },
+      { key: "busVoltage", label: "Bus Voltage", unit: "kV", min: 380, max: 420, minAlarm: 370, maxAlarm: 430, sensor: "PT / CVT", iecLn: "MMXU.Voltage" },
       { key: "lineCurrent", label: "Line Current", unit: "A", min: 100, max: 3000, minAlarm: 0, maxAlarm: 4000, sensor: "CT", iecLn: "MMXU.Current" },
       { key: "mw", label: "Active Power (MW)", unit: "MW", min: 10, max: 1500, minAlarm: -100, maxAlarm: 2000, sensor: "Energy Meter", iecLn: "MMXU.TotW" },
       { key: "mvar", label: "Reactive Power (MVAR)", unit: "MVAR", min: -500, max: 500, minAlarm: -800, maxAlarm: 800, sensor: "Meter", iecLn: "MMXU.TotVAr" },
       { key: "powerFactor", label: "Power Factor", unit: "p.u.", min: 0.7, max: 1.0, minAlarm: 0.5, maxAlarm: 1.1, sensor: "Meter", iecLn: "MMXU.PF" },
       { key: "frequency", label: "Frequency", unit: "Hz", min: 49.5, max: 50.5, minAlarm: 47, maxAlarm: 52, sensor: "PMU", iecLn: "MMXU.Hz" },
-      { key: "voltageAngle", label: "Voltage Angle", unit: "°", min: -180, max: 180, sensor: "PMU", iecLn: "PMU.VoltageAngle" },
-      { key: "currentAngle", label: "Current Angle", unit: "°", min: -180, max: 180, sensor: "PMU", iecLn: "PMU.CurrentAngle" },
+      { key: "voltageAngle", label: "Voltage Angle", unit: "°", min: -180, max: 180, minAlarm: -180, maxAlarm: 180, sensor: "PMU", iecLn: "PMU.VoltageAngle" },
+      { key: "currentAngle", label: "Current Angle", unit: "°", min: -180, max: 180, minAlarm: -180, maxAlarm: 180, sensor: "PMU", iecLn: "PMU.CurrentAngle" },
       { key: "rocof", label: "ROCOF", unit: "Hz/s", min: 0, max: 5, minAlarm: -10, maxAlarm: 10, sensor: "PMU", iecLn: "PMU.ROCOF" },
-      { key: "thd", label: "THD", unit: "%", min: 0, max: 8, maxAlarm: 15, sensor: "PQ Meter", iecLn: "PQTHD" },
+      { key: "thd", label: "THD", unit: "%", min: 0, max: 5, minAlarm: 0, maxAlarm: 8, sensor: "PQ Meter", iecLn: "PQTHD" },
     ],
     maintenancePlaybook: [
       {
@@ -39,14 +39,14 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "Core, winding and insulation diagnostics.",
     category: "primary",
     parameters: [
-      { key: "windingTemp", label: "Winding Temperature", unit: "°C", min: 40, max: 120, minAlarm: -40, maxAlarm: 140 },
-      { key: "oilTemp", label: "Oil Temperature", unit: "°C", min: 30, max: 110, minAlarm: -40, maxAlarm: 130 },
-      { key: "loading", label: "Loading", unit: "%", min: 20, max: 130, minAlarm: 0, maxAlarm: 200 },
-      { key: "tapPosition", label: "Tap Position", unit: "step", min: 1, max: 33, minAlarm: 1, maxAlarm: 33 },
-      { key: "hydrogen", label: "Hydrogen (ppm)", unit: "ppm", min: 10, max: 500, minAlarm: 0, maxAlarm: 1000 },
-      { key: "acetylene", label: "Acetylene (ppm)", unit: "ppm", min: 0, max: 50, minAlarm: 0, maxAlarm: 100 },
-      { key: "oilLevel", label: "Oil Level", unit: "%", min: 40, max: 100, minAlarm: 20, maxAlarm: 100 },
-      { key: "moisture", label: "Moisture", unit: "ppm", min: 5, max: 30, minAlarm: 0, maxAlarm: 200 },
+      { key: "windingTemp", label: "Winding Temperature", unit: "°C", min: 40, max: 90, minAlarm: 35, maxAlarm: 95 },
+      { key: "oilTemp", label: "Oil Temperature", unit: "°C", min: 30, max: 80, minAlarm: 25, maxAlarm: 85 },
+      { key: "loading", label: "Loading", unit: "%", min: 20, max: 110, minAlarm: 0, maxAlarm: 120 },
+      { key: "tapPosition", label: "Tap Position", unit: "step", min: 1, max: 17, minAlarm: 1, maxAlarm: 17 },
+      { key: "hydrogen", label: "Hydrogen (ppm)", unit: "ppm", min: 10, max: 300, minAlarm: 0, maxAlarm: 350 },
+      { key: "acetylene", label: "Acetylene (ppm)", unit: "ppm", min: 0, max: 5, minAlarm: 5, maxAlarm: 50 },
+      { key: "oilLevel", label: "Oil Level", unit: "%", min: 90, max: 100, minAlarm: 85, maxAlarm: 100 },
+      { key: "moisture", label: "Moisture", unit: "ppm", min: 15, max: 20, minAlarm: 10, maxAlarm: 25 },
       { key: "buchholz", label: "Buchholz", type: "status", description: "Alarm / Trip" },
       { key: "cooling", label: "Cooling Status", type: "status" },
     ],
@@ -98,9 +98,9 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "Thermal and load monitoring.",
     category: "primary",
     parameters: [
-      { key: "busVoltage", label: "Bus Voltage", unit: "kV", min: 220, max: 420, minAlarm: 200, maxAlarm: 450 },
+      { key: "busVoltage", label: "Bus Voltage", unit: "kV", min: 380, max: 420, minAlarm: 370, maxAlarm: 430 },
       { key: "busCurrent", label: "Bus Current", unit: "A", min: 100, max: 5000, minAlarm: 0, maxAlarm: 6000 },
-      { key: "busTemperature", label: "Bus Temperature", unit: "°C", min: 40, max: 120, minAlarm: 30, maxAlarm: 140 },
+      { key: "busTemperature", label: "Bus Temperature", unit: "°C", min: 40, max: 90, minAlarm: 30, maxAlarm: 100 },
     ],
     maintenancePlaybook: [
       {
@@ -125,10 +125,10 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     category: "primary",
     parameters: [
       { key: "status", label: "Status", type: "status" },
-      { key: "driveTorque", label: "Drive Torque", unit: "Nm", min: 20, max: 250, minAlarm: 15, maxAlarm: 300 },
-      { key: "operatingTime", label: "Operating Time", unit: "sec", min: 0.3, max: 2, minAlarm: 0.1, maxAlarm: 4 },
-      { key: "contactResistance", label: "Contact Resistance", unit: "µΩ", min: 20, max: 200, minAlarm: 250, maxAlarm: 350 },
-      { key: "motorCurrent", label: "Motor Current", unit: "A", min: 1, max: 10, minAlarm: 0.5, maxAlarm: 15 },
+      { key: "driveTorque", label: "Drive Torque", unit: "Nm", min: 20, max: 200, minAlarm: 10, maxAlarm: 250 },
+      { key: "operatingTime", label: "Operating Time", unit: "ms", min: 100, max: 300, minAlarm: 50, maxAlarm: 500 },
+      { key: "contactResistance", label: "Contact Resistance", unit: "µΩ", min: 10, max: 200, minAlarm: 200, maxAlarm: 500 },
+      { key: "motorCurrent", label: "Motor Current", unit: "A", min: 2, max: 10, minAlarm: 1, maxAlarm: 15 },
     ],
     maintenancePlaybook: [
       {
@@ -180,9 +180,9 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     category: "secondary",
     parameters: [
       { key: "gpsSync", label: "GPS Sync", type: "status" },
-      { key: "phasorAngle", label: "Phasor Angle", unit: "°", min: -10, max: 10 },
-      { key: "phasorMagnitude", label: "Phasor Magnitude", unit: "p.u.", min: 0.95, max: 1.05 },
-      { key: "rocof", label: "ROCOF", unit: "Hz/s", min: -2, max: 2 },
+      { key: "phasorAngle", label: "Phasor Angle", unit: "°", min: -180, max: 180, minAlarm: -180, maxAlarm: 180 },
+      { key: "phasorMagnitude", label: "Phasor Magnitude", unit: "p.u.", min: 0.9, max: 1.1, minAlarm: 0.8, maxAlarm: 1.2 },
+      { key: "rocof", label: "ROCOF", unit: "Hz/s", min: 0, max: 5, minAlarm: -10, maxAlarm: 10 },
     ],
     maintenancePlaybook: [
       {
@@ -206,9 +206,9 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "Gas insulated switchgear diagnostics.",
     category: "secondary",
     parameters: [
-      { key: "sf6Pressure", label: "SF6 Pressure", unit: "bar", min: 6.5, max: 7.5, minAlarm: 6, maxAlarm: 8 },
-      { key: "pdLevel", label: "Partial Discharge", unit: "pC", min: 0, max: 400, maxAlarm: 500 },
-      { key: "gasMoisture", label: "Gas Moisture", unit: "ppm", min: 0, max: 250, maxAlarm: 400 },
+      { key: "sf6Pressure", label: "SF6 Pressure", unit: "bar", min: 6, max: 7, minAlarm: 5.5, maxAlarm: 5.5 },
+      { key: "pdLevel", label: "Partial Discharge", unit: "pC", min: 0, max: 50, minAlarm: 50, maxAlarm: 2000 },
+      { key: "gasMoisture", label: "Gas Moisture", unit: "ppm", min: 0, max: 50, minAlarm: 50, maxAlarm: 200 },
     ],
     maintenancePlaybook: [
       {
@@ -232,10 +232,10 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "DC auxiliary supply health.",
     category: "secondary",
     parameters: [
-      { key: "batteryVoltage", label: "Voltage", unit: "V", min: 210, max: 240, minAlarm: 200, maxAlarm: 250 },
-      { key: "batteryCurrent", label: "Current", unit: "A", min: -10, max: 30, minAlarm: -20, maxAlarm: 40 },
-      { key: "soc", label: "State of Charge", unit: "%", min: 70, max: 100, minAlarm: 40, maxAlarm: 105 },
-      { key: "temperature", label: "Temperature", unit: "°C", min: 20, max: 40, minAlarm: 0, maxAlarm: 60 },
+      { key: "batteryVoltage", label: "Voltage", unit: "V", min: 198, max: 264, minAlarm: 180, maxAlarm: 280 },
+      { key: "batteryCurrent", label: "Current", unit: "A", min: 0, max: 100, minAlarm: 0, maxAlarm: 150 },
+      { key: "soc", label: "State of Charge", unit: "%", min: 20, max: 100, minAlarm: 10, maxAlarm: 100 },
+      { key: "temperature", label: "Temperature", unit: "°C", min: 10, max: 50, minAlarm: 0, maxAlarm: 60 },
     ],
     maintenancePlaybook: [
       {
@@ -259,10 +259,10 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "Environmental stress and weather links.",
     category: "secondary",
     parameters: [
-      { key: "ambientTemperature", label: "Ambient Temperature", unit: "°C", min: 10, max: 55, minAlarm: -10, maxAlarm: 65 },
-      { key: "humidity", label: "Humidity", unit: "%", min: 30, max: 80, minAlarm: 10, maxAlarm: 95 },
-      { key: "windSpeed", label: "Wind Speed", unit: "m/s", min: 0, max: 15, maxAlarm: 30 },
-      { key: "solarIrradiance", label: "Solar Irradiance", unit: "W/m²", min: 0, max: 1000, maxAlarm: 1200 },
+      { key: "ambientTemperature", label: "Ambient Temperature", unit: "°C", min: -10, max: 55, minAlarm: -20, maxAlarm: 60 },
+      { key: "humidity", label: "Humidity", unit: "%", min: 10, max: 80, minAlarm: 0, maxAlarm: 90 },
+      { key: "windSpeed", label: "Wind Speed", unit: "m/s", min: 0, max: 40, minAlarm: 0, maxAlarm: 60 },
+      { key: "solarIrradiance", label: "Solar Irradiance", unit: "W/m²", min: 0, max: 1000, minAlarm: 0, maxAlarm: 1200 },
     ],
     maintenancePlaybook: [
       {
@@ -284,5 +284,4 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
 }
 
 export const PRIMARY_COMPONENTS: DiagnosisComponentKey[] = ["bayLines", "transformer", "circuitBreaker", "busbar", "isolator"]
-export const SECONDARY_COMPONENTS: DiagnosisComponentKey[] = ["relay", "pmu", "gis", "battery", "environment"]
 

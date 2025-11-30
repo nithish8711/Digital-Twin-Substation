@@ -296,7 +296,7 @@ export function AssetDetails({ substation }: AssetDetailsProps) {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="bg-blue-600 hover:bg-blue-700 text-white border-0" asChild>
+          <Button variant="default" asChild>
             <Link href={`/edit-substation/${substation.id}`}>
               <Edit className="mr-2 h-4 w-4" />
             Edit Substation

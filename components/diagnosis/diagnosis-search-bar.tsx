@@ -20,7 +20,7 @@ export function DiagnosisSearchBar({
   onChange,
   onSubmit,
   activeArea,
-  isLoading,
+  isLoading = false,
 }: DiagnosisSearchBarProps) {
   const [localError, setLocalError] = useState<string | null>(null)
 
@@ -60,12 +60,12 @@ export function DiagnosisSearchBar({
             type="button"
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 md:min-w-[160px]"
+            className="md:min-w-[160px]"
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading…
+                Loading...
               </>
             ) : (
               "Load Area Diagnosis"

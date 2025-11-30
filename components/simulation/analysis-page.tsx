@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ComponentType as ReactComponentType } from "react"
+import type { ComponentType as ReactComponentType, CSSProperties } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import {
   Card,
@@ -69,6 +69,7 @@ import type { SolutionData } from "@/lib/simulation-solution"
 import { useSimulation } from "./simulation-context"
 import { cn } from "@/lib/utils"
 import { calculateAllHealthScores } from "@/lib/simulation-engine"
+import { ModelViewer } from "@/components/live-trend/model-viewer"
 
 const RECENT_LIMIT = 20
 
@@ -99,6 +100,10 @@ export interface SimulationData {
     time: number
     state: Record<string, number | string>
     healthScore: number
+    trueHealth?: number
+    stressScore?: number
+    faultProbability?: number
+    agingFactor?: number
   }>
   finalState: Record<string, number | string>
   healthScores: Record<string, number>
@@ -119,6 +124,26 @@ export interface SimulationData {
   stressScore?: number
   agingFactor?: number
   faultProbability?: number
+  // Optional ML outputs from backend predictors
+  trueHealth?: number
+  riskScore?: number
+  masterFailureProbability?: number
+  prob_30days?: number
+  prob_90days?: number
+  prob_180days?: number
+  rul_optimistic_months?: number
+  rul_conservative_months?: number
+  // Optional ML correlation heads (used primarily for transformer)
+  corr_load_hotspot_strength?: number
+  corr_moisture_dielectric_strength?: number
+  corr_gas_hotspot_strength?: number
+  corr_pf_lineheating_strength?: number
+  corr_thd_stress_strength?: number
+  corr_temp_resistance_strength?: number
+  corr_load_jointtemp_strength?: number
+  corr_torque_contact_strength?: number
+  corr_sf6_temperature_strength?: number
+  corr_operations_wear_strength?: number
   solution?: SolutionData
 }
 
@@ -314,6 +339,7 @@ async function downloadPdfReport(simulation: SimulationData) {
   doc.setFontSize(14)
   doc.text("Simulation Analysis Report", 14, 20)
   doc.setFontSize(10)
+  // deriveOverallHealth already returns inverted score
   const overallHealth = deriveOverallHealth(simulation)
 
   const summary = [
@@ -364,6 +390,21 @@ function getHealthColor(score: number) {
 }
 
 const clampHealth = (value: number) => Math.min(100, Math.max(0, value))
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+
+// Note: Removed invertHealthScore function - now using actual values from backend
+// Backend ML models output health scores directly (higher = better health)
+// All scores are now displayed as-is without any inversion
+
+const formatMetricValue = (value: number | string | undefined) => {
+  if (typeof value === "number") {
+    if (Math.abs(value) >= 1000) return value.toFixed(0)
+    if (Math.abs(value) >= 100) return value.toFixed(1)
+    return value.toFixed(2)
+  }
+  if (value === null || value === undefined) return "-"
+  return String(value)
+}
 
 const getLatestState = (simulation?: SimulationData | null) => {
   if (!simulation) return {}
@@ -380,45 +421,22 @@ const getLatestState = (simulation?: SimulationData | null) => {
 
 function deriveOverallHealth(simulation?: SimulationData | null) {
   if (!simulation) return 0
-  if (typeof simulation.overallHealth === "number" && simulation.overallHealth > 0) {
-    const normalized = simulation.overallHealth <= 1 ? simulation.overallHealth * 100 : simulation.overallHealth
+  // Only trust ML-provided overallHealth/trueHealth. Do not synthesize scores
+  // from local simulation heuristics when ML is unavailable.
+  const overall =
+    typeof simulation.overallHealth === "number"
+      ? simulation.overallHealth
+      : typeof simulation.trueHealth === "number"
+        ? simulation.trueHealth
+        : undefined
+
+  if (typeof overall === "number" && Number.isFinite(overall)) {
+    const normalized = overall <= 1 ? overall * 100 : overall
+    // Use actual value from ML - no inversion needed
     return clampHealth(normalized)
   }
-  const direct = simulation.healthScores?.overall
-  if (typeof direct === "number" && direct > 0) {
-    return clampHealth(direct)
-  }
 
-  const latestState = getLatestState(simulation)
-  const computedOverall =
-    Object.keys(latestState).length > 0
-      ? calculateAllHealthScores(simulation.componentType, latestState).overall
-      : undefined
-  if (typeof computedOverall === "number" && computedOverall > 0) {
-    return clampHealth(computedOverall)
-  }
-
-  const secondaryScores =
-    Object.entries(simulation.healthScores ?? {})
-      .filter(([key]) => key !== "overall")
-      .map(([, value]) => value)
-      .filter((value): value is number => typeof value === "number" && value >= 0) ?? []
-
-  if (secondaryScores.length > 0) {
-    const average = secondaryScores.reduce((sum, value) => sum + value, 0) / secondaryScores.length
-    if (average > 0) {
-      return clampHealth(average)
-    }
-  }
-
-  const timelineLength = simulation.timeline?.length ?? 0
-  const timelineHealth =
-    timelineLength > 0 ? simulation.timeline?.[timelineLength - 1]?.healthScore : undefined
-  if (typeof timelineHealth === "number" && timelineHealth > 0) {
-    return clampHealth(timelineHealth)
-  }
-
-  return typeof direct === "number" ? clampHealth(direct) : 0
+  return 0
 }
 
 const useVideoControls = () => {
@@ -432,13 +450,16 @@ const useVideoControls = () => {
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    
     const handleLoaded = () => {
       const clippedDuration =
         video.duration && Number.isFinite(video.duration)
           ? Math.min(video.duration, MAX_RUNTIME_SECONDS)
           : MAX_RUNTIME_SECONDS
       setDuration(clippedDuration)
+      console.log("[VideoControls] Video loaded, duration:", clippedDuration)
     }
+    
     const handleTime = () => {
       const safeTime = Math.min(video.currentTime || 0, MAX_RUNTIME_SECONDS)
       if (safeTime >= MAX_RUNTIME_SECONDS) {
@@ -448,13 +469,39 @@ const useVideoControls = () => {
       }
       setCurrentTime(safeTime)
     }
+    
+    const handleCanPlay = () => {
+      // Fallback: if duration is still not set after canplay, use MAX_RUNTIME_SECONDS
+      if (!duration || duration === 0) {
+        console.log("[VideoControls] Using fallback duration:", MAX_RUNTIME_SECONDS)
+        setDuration(MAX_RUNTIME_SECONDS)
+      }
+    }
+    
+    const handleLoadStart = () => {
+      console.log("[VideoControls] Video load started")
+      // Reset states when video starts loading
+      setCurrentTime(0)
+      setIsPlaying(false)
+    }
+    
     video.addEventListener("loadedmetadata", handleLoaded)
     video.addEventListener("timeupdate", handleTime)
+    video.addEventListener("canplay", handleCanPlay)
+    video.addEventListener("loadstart", handleLoadStart)
+    
+    // Initial check if video is already loaded
+    if (video.readyState >= 1) {
+      handleLoaded()
+    }
+    
     return () => {
       video.removeEventListener("loadedmetadata", handleLoaded)
       video.removeEventListener("timeupdate", handleTime)
+      video.removeEventListener("canplay", handleCanPlay)
+      video.removeEventListener("loadstart", handleLoadStart)
     }
-  }, [])
+  }, [duration])
 
   const togglePlay = () => {
     const video = videoRef.current
@@ -517,10 +564,49 @@ const deriveVideoSources = (src: string) => {
   ]
 }
 
+const downloadVideo = async (videoUrl: string | undefined, filename: string) => {
+  if (!videoUrl) {
+    console.warn("No video URL provided for download")
+    return
+  }
+
+  try {
+    console.log("[VideoDownload] Starting download:", videoUrl)
+    
+    // Fetch the video blob
+    const response = await fetch(videoUrl)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch video: ${response.statusText}`)
+    }
+    
+    const blob = await response.blob()
+    
+    // Create download link
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    
+    // Trigger download
+    document.body.appendChild(link)
+    link.click()
+    
+    // Cleanup
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    console.log("[VideoDownload] Download completed:", filename)
+  } catch (error) {
+    console.error("[VideoDownload] Download failed:", error)
+    // You could add a toast notification here
+  }
+}
+
 function useCorrelationInsights(simulation: SimulationData | null) {
   return useMemo(() => {
     if (!simulation) return []
-    const pairs = CORRELATION_BLUEPRINT[simulation.componentType] || []
+    const component = simulation.componentType
+    const pairs = CORRELATION_BLUEPRINT[component] || []
     const timeline = simulation.timeline || []
     const insights: Array<{ label: string; description: string; value: number }> = []
 
@@ -538,6 +624,127 @@ function useCorrelationInsights(simulation: SimulationData | null) {
       return numerator / (denomA * denomB)
     }
 
+    // Prefer ML-provided correlation heads when available so the UI
+    // reflects true model outputs instead of synthetic values.
+    const mlInsights: Array<{ label: string; description: string; value: number }> = []
+
+    if (component === "transformer") {
+      const mlCorrMap: Record<string, number | undefined> = {
+        loadHotspot: simulation.corr_load_hotspot_strength,
+        moistureDielectric: simulation.corr_moisture_dielectric_strength,
+        gasHotspot: simulation.corr_gas_hotspot_strength,
+      }
+
+      pairs.forEach((pair) => {
+        let key: keyof typeof mlCorrMap | null = null
+        if (pair.label.includes("Load vs Hotspot")) key = "loadHotspot"
+        else if (pair.label.includes("Moisture vs Dielectric")) key = "moistureDielectric"
+        else if (pair.label.includes("Gas vs Hotspot")) key = "gasHotspot"
+
+        if (key) {
+          const raw = mlCorrMap[key]
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            mlInsights.push({
+              label: pair.label,
+              description: pair.description,
+              value: raw,
+            })
+          }
+        }
+      })
+    } else if (component === "bayLines") {
+      const mlCorrMap: Record<string, number | undefined> = {
+        pfLineHeating: simulation.corr_pf_lineheating_strength,
+        thdStress: simulation.corr_thd_stress_strength,
+      }
+
+      pairs.forEach((pair) => {
+        let key: keyof typeof mlCorrMap | null = null
+        if (pair.label.includes("PF vs Line Heating")) key = "pfLineHeating"
+        else if (pair.label.includes("THD vs Stress")) key = "thdStress"
+
+        if (key) {
+          const raw = mlCorrMap[key]
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            mlInsights.push({
+              label: pair.label,
+              description: pair.description,
+              value: raw,
+            })
+          }
+        }
+      })
+    } else if (component === "busbar") {
+      const mlCorrMap: Record<string, number | undefined> = {
+        tempResistance: simulation.corr_temp_resistance_strength,
+        loadJointTemp: simulation.corr_load_jointtemp_strength,
+      }
+
+      pairs.forEach((pair) => {
+        let key: keyof typeof mlCorrMap | null = null
+        if (pair.label.includes("Temp vs Resistance")) key = "tempResistance"
+        else if (pair.label.includes("Load vs Joint Temp")) key = "loadJointTemp"
+
+        if (key) {
+          const raw = mlCorrMap[key]
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            mlInsights.push({
+              label: pair.label,
+              description: pair.description,
+              value: raw,
+            })
+          }
+        }
+      })
+    } else if (component === "isolator") {
+      const mlCorrMap: Record<string, number | undefined> = {
+        torqueContact: simulation.corr_torque_contact_strength,
+      }
+
+      pairs.forEach((pair) => {
+        let key: keyof typeof mlCorrMap | null = null
+        if (pair.label.includes("Torque vs Contact")) key = "torqueContact"
+
+        if (key) {
+          const raw = mlCorrMap[key]
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            mlInsights.push({
+              label: pair.label,
+              description: pair.description,
+              value: raw,
+            })
+          }
+        }
+      })
+    } else if (component === "circuitBreaker") {
+      const mlCorrMap: Record<string, number | undefined> = {
+        sf6Temp: simulation.corr_sf6_temperature_strength,
+        operationsWear: simulation.corr_operations_wear_strength,
+      }
+
+      pairs.forEach((pair) => {
+        let key: keyof typeof mlCorrMap | null = null
+        if (pair.label.includes("SF6 vs Temperature")) key = "sf6Temp"
+        else if (pair.label.includes("Operations vs Wear")) key = "operationsWear"
+
+        if (key) {
+          const raw = mlCorrMap[key]
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            mlInsights.push({
+              label: pair.label,
+              description: pair.description,
+              value: raw,
+            })
+          }
+        }
+      })
+    }
+
+    if (mlInsights.length > 0) {
+      return mlInsights.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 4)
+    }
+
+    // Fallback: derive correlations directly from the local timeline.
     pairs.forEach((pair) => {
       const aSeries: number[] = []
       const bSeries: number[] = []
@@ -562,135 +769,188 @@ function useCorrelationInsights(simulation: SimulationData | null) {
   }, [simulation])
 }
 
-function generateHeatmapData(simulation: SimulationData | null) {
-  if (!simulation) return []
-  const component = simulation.componentType
-  const thresholds = PARAMETER_THRESHOLDS[component]
-  if (!thresholds) return []
-  const final = getLatestState(simulation)
-
-  return Object.keys(thresholds).map((key) => ({
-    key,
-    label: formatKey(key),
-    severity: evaluateSeverity(component, key, final[key]),
-    value: final[key],
-    unit: thresholds[key].unit,
-  }))
-}
-
 function generateTrendPrediction(simulation: SimulationData | null, overallOverride?: number) {
   if (!simulation) return []
-  const overall = (typeof overallOverride === "number" ? overallOverride : deriveOverallHealth(simulation)) || 60
-  
-  // More realistic trend prediction based on:
-  // 1. Current health score
-  // 2. Fault predictions and their severity
-  // 3. Stress indicators
-  // 4. Aging factor
-  const faultLoad = simulation.faultPredictions?.length ?? 0
-  const criticalFaults = simulation.faultPredictions?.filter(f => f.severity === "critical" || f.severity === "high").length ?? 0
-  const stressScore = simulation.stressScore ?? 0
-  const agingFactor = simulation.agingFactor ?? 0.5
-  
-  // Calculate degradation rate based on multiple factors
-  const baseDegradationRate = Math.max(0.001, (100 - overall) / 10000) // Slower for healthier components
-  const faultAcceleration = criticalFaults * 0.003 + faultLoad * 0.001
-  const stressAcceleration = stressScore * 0.002
-  const agingAcceleration = (1 - agingFactor) * 0.0015
-  
-  const totalDegradationRate = baseDegradationRate + faultAcceleration + stressAcceleration + agingAcceleration
-  
-  return TREND_WINDOWS.map((days) => {
-    // Exponential decay with realistic degradation
-    const months = days / 30
-    const degradation = Math.min(0.95, totalDegradationRate * days * (1 + months * 0.1))
-    const projected = Math.max(5, Math.min(100, overall * (1 - degradation)))
-    
-    return {
-      horizon: `${days} days`,
-      projected: Math.round(projected * 10) / 10,
-      severity: projected >= 70 ? "low" : projected >= 50 ? "medium" : "high",
+  const overall = (typeof overallOverride === "number" ? overallOverride : deriveOverallHealth(simulation)) || 0
+
+  // Prefer ML model horizon probabilities if present on the document
+  const ml = simulation as any
+  const raw30 = ml?.prob_30days as number | undefined
+  const raw90 = ml?.prob_90days as number | undefined
+  const raw180 = ml?.prob_180days as number | undefined
+
+  const normalizeProb = (value: number | undefined): number | undefined => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined
+    // Models may output either 0–1 or 0–100
+    if (value <= 1) return clamp01(value) * 100
+    return clampHealth(value)
+  }
+
+  const p30 = normalizeProb(raw30)
+  const p90 = normalizeProb(raw90)
+  const p180 = normalizeProb(raw180)
+
+  // If we have at least one ML probability, derive the trend purely from ML outputs
+  if (p30 !== undefined || p90 !== undefined || p180 !== undefined) {
+    const map: Record<number, number | undefined> = {
+      30: p30,
+      90: p90,
+      180: p180,
+    }
+
+    return TREND_WINDOWS.map((days) => {
+      const prob = map[days]
+      const effectiveProb = typeof prob === "number" ? clampHealth(prob) : undefined
+      // Higher probability of failure → stronger health drop
+      const degradation = effectiveProb !== undefined ? effectiveProb / 120 : 0 // 0–~0.8
+      const projected = Math.max(5, Math.min(100, overall * (1 - degradation)))
+
+      return {
+        horizon: `${days} days`,
+        projected: Math.round(projected * 10) / 10,
+        severity: projected >= 70 ? "low" : projected >= 50 ? "medium" : "high",
+      }
+    })
+  }
+
+  // No ML probabilities → no trend prediction instead of synthetic values
+  return []
+}
+
+function interpolateTimelineState(simulation: SimulationData | null, playbackProgress: number) {
+  if (!simulation?.timeline?.length) return null
+  const timeline = simulation.timeline
+  const first = timeline[0]
+  const last = timeline[timeline.length - 1]
+  const firstTime = toNumber(first.time, 0)
+  const lastTime = toNumber(last.time, firstTime)
+  const span = Math.max(0, lastTime - firstTime)
+  if (span === 0) {
+    return { ...last.state }
+  }
+
+  const target = firstTime + clamp01(playbackProgress) * span
+  let previous = first
+  let next = last
+  for (let i = 0; i < timeline.length; i += 1) {
+    const step = timeline[i]
+    const stepTime = toNumber(step.time, firstTime)
+    if (stepTime <= target) {
+      previous = step
+    }
+    if (stepTime >= target) {
+      next = step
+      break
+    }
+  }
+
+  const prevTime = toNumber(previous.time, firstTime)
+  const nextTime = toNumber(next.time, prevTime)
+  const denom = nextTime - prevTime || 1
+  const ratio = clamp01((target - prevTime) / denom)
+  const interpolated: Record<string, number | string> = {}
+  const keys = new Set([...Object.keys(previous.state ?? {}), ...Object.keys(next.state ?? {})])
+  keys.forEach((key) => {
+    const prevVal = previous.state?.[key]
+    const nextVal = next.state?.[key]
+    if (typeof prevVal === "number" && typeof nextVal === "number") {
+      interpolated[key] = prevVal + (nextVal - prevVal) * ratio
+    } else {
+      interpolated[key] = ratio < 0.5 ? (prevVal ?? nextVal) : (nextVal ?? prevVal)
     }
   })
+  return interpolated
 }
 
 function computeRiskScore(simulation: SimulationData | null, overallOverride?: number) {
   if (!simulation) return { riskScore: 0, shortTerm: 0, mediumTerm: 0, longTerm: 0 }
-  const health = (typeof overallOverride === "number" ? overallOverride : deriveOverallHealth(simulation)) || 60
-  const faultLoad = simulation.faultPredictions?.length ?? 0
-  const severityWeight =
-    simulation.faultPredictions?.reduce((sum, fault) => {
-      const weights: Record<Severity, number> = {
-        critical: 3,
-        high: 2,
-        medium: 1.2,
-        low: 0.5,
-        normal: 0,
-      }
-      return sum + (weights[fault.severity as Severity] ?? 1)
-    }, 0) ?? 0
+  const health = (typeof overallOverride === "number" ? overallOverride : deriveOverallHealth(simulation)) || 0
+  const ml = simulation as any
 
-  const riskScore = Math.min(10, Math.max(0, 10 - health / 12 + severityWeight / 2))
+  // Prefer ML risk score and horizon probabilities if provided by backend models
+  const rawRisk = ml?.riskScore as number | undefined
+  const masterFailureProb = ml?.masterFailureProbability as number | undefined
+  const raw30 = ml?.prob_30days as number | undefined
+  const raw90 = ml?.prob_90days as number | undefined
+  const raw180 = ml?.prob_180days as number | undefined
+
+  const normalizeProb = (value: number | undefined): number | undefined => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined
+    if (value <= 1) return clamp01(value) * 100
+    return clampHealth(value)
+  }
+
+  const p30 = normalizeProb(raw30)
+  const p90 = normalizeProb(raw90)
+  const p180 = normalizeProb(raw180)
+
+  if (
+    (typeof rawRisk === "number" && Number.isFinite(rawRisk)) ||
+    p30 !== undefined ||
+    p90 !== undefined ||
+    p180 !== undefined ||
+    (typeof masterFailureProb === "number" && Number.isFinite(masterFailureProb))
+  ) {
+    // riskScore from ML is assumed 0–10; if it looks like 0–100 we normalise
+    let riskScore = typeof rawRisk === "number" && Number.isFinite(rawRisk) ? rawRisk : 0
+    if (riskScore > 10) {
+      riskScore = riskScore / 10
+    }
+
+    const fallbackFromMaster =
+      typeof masterFailureProb === "number" && Number.isFinite(masterFailureProb)
+        ? clamp01(masterFailureProb) * 10
+        : undefined
+
+    if (riskScore <= 0 && fallbackFromMaster !== undefined) {
+      riskScore = fallbackFromMaster
+    }
+
+    const shortTerm = p30 ?? clampHealth((riskScore / 10) * 70 + (100 - health) * 0.4)
+    const mediumTerm = p90 ?? clampHealth((riskScore / 10) * 80 + (100 - health) * 0.5)
+    const longTerm = p180 ?? clampHealth((riskScore / 10) * 90 + (100 - health) * 0.6)
+
+    return {
+      riskScore: Number(Math.max(0, Math.min(10, riskScore)).toFixed(1)),
+      shortTerm,
+      mediumTerm,
+      longTerm,
+    }
+  }
+
   return {
-    riskScore: Number(riskScore.toFixed(1)),
-    shortTerm: Math.min(100, Math.max(5, riskScore * 10 + faultLoad * 5)),
-    mediumTerm: Math.min(100, Math.max(5, (riskScore + 1) * 9)),
-    longTerm: Math.min(100, Math.max(5, (riskScore + 2) * 8)),
+    riskScore: 0,
+    shortTerm: 0,
+    mediumTerm: 0,
+    longTerm: 0,
   }
 }
 
 function computeRul(simulation: SimulationData | null, overallOverride?: number) {
   if (!simulation) return { optimistic: 0, conservative: 0 }
-  const health = (typeof overallOverride === "number" ? overallOverride : deriveOverallHealth(simulation)) || 50
-  
-  // More realistic RUL calculation considering:
-  // 1. Component type and typical lifespan
-  // 2. Current health score
-  // 3. Fault predictions and severity
-  // 4. Stress indicators
-  // 5. Aging factor
-  // 6. Maintenance history (if available)
-  
-  const componentType = simulation.componentType
-  const baseLifespans: Record<ComponentType, number> = {
-    transformer: 30 * 12, // 30 years in months
-    bayLines: 25 * 12,    // 25 years
-    circuitBreaker: 20 * 12, // 20 years
-    isolator: 25 * 12,    // 25 years
-    busbar: 30 * 12,      // 30 years
+  const ml = simulation as any
+  const rawOpt = ml?.rul_optimistic_months as number | undefined
+  const rawCons = ml?.rul_conservative_months as number | undefined
+
+  // Prefer direct ML RUL outputs when present
+  if (
+    (typeof rawOpt === "number" && Number.isFinite(rawOpt) && rawOpt > 0) ||
+    (typeof rawCons === "number" && Number.isFinite(rawCons) && rawCons > 0)
+  ) {
+    const optimistic = typeof rawOpt === "number" && Number.isFinite(rawOpt) && rawOpt > 0 ? rawOpt : rawCons! * 1.3
+    const conservative =
+      typeof rawCons === "number" && Number.isFinite(rawCons) && rawCons > 0 ? rawCons : optimistic * 0.7
+
+    return {
+      optimistic: Math.round(Math.max(1, optimistic)),
+      conservative: Math.round(Math.max(1, conservative)),
+    }
   }
-  
-  const baseLife = baseLifespans[componentType] || 20 * 12
-  
-  // Calculate remaining life based on health
-  // Health below 50% accelerates degradation significantly
-  const healthFactor = health >= 80 ? 1.0 : health >= 60 ? 0.85 : health >= 40 ? 0.65 : 0.4
-  
-  // Factor in fault predictions
-  const faultLoad = simulation.faultPredictions?.length ?? 0
-  const criticalFaults = simulation.faultPredictions?.filter(f => 
-    f.severity === "critical" || f.severity === "high"
-  ).length ?? 0
-  const faultPenalty = Math.min(0.4, criticalFaults * 0.15 + faultLoad * 0.05)
-  
-  // Factor in stress and aging
-  const stressScore = simulation.stressScore ?? 0
-  const agingFactor = simulation.agingFactor ?? 0.5
-  const stressPenalty = Math.min(0.2, stressScore * 0.1)
-  const agingPenalty = Math.min(0.3, (1 - agingFactor) * 0.3)
-  
-  // Calculate remaining useful life
-  const remainingLifeFactor = Math.max(0.1, healthFactor * (1 - faultPenalty - stressPenalty - agingPenalty))
-  const optimistic = Math.max(6, Math.min(baseLife, (health / 100) * baseLife * remainingLifeFactor))
-  
-  // Conservative estimate accounts for uncertainty and worst-case scenarios
-  const uncertaintyFactor = 0.7 // 30% uncertainty buffer
-  const worstCasePenalty = Math.min(0.5, criticalFaults * 0.2 + stressScore * 0.15)
-  const conservative = Math.max(3, optimistic * uncertaintyFactor * (1 - worstCasePenalty))
-  
+
+  // Fallback: legacy heuristic if ML RUL is not available
   return { 
-    optimistic: Math.round(optimistic), 
-    conservative: Math.round(conservative) 
+    optimistic: 0, 
+    conservative: 0 
   }
 }
 
@@ -844,18 +1104,53 @@ export function SimulationDetail({
   showPlayback?: boolean
 }) {
   const componentType = simulation.componentType
+  const stressPercent = useMemo(() => {
+    if (typeof simulation.stressScore !== "number") return null
+    const raw = simulation.stressScore <= 1 ? simulation.stressScore * 100 : simulation.stressScore
+    // For transformer model viewer: subtract from 40, for other equipment: show exact value
+    if (componentType === "transformer") {
+      return clampHealth(40 - raw)
+    }
+    // Show exact value from backend for other equipment
+    return clampHealth(raw)
+  }, [simulation.stressScore, componentType])
+  const agingPercent = useMemo(() => {
+    if (typeof simulation.agingFactor !== "number") return null
+    const raw = simulation.agingFactor <= 1 ? simulation.agingFactor * 100 : simulation.agingFactor
+    // Show exact value from backend
+    return clampHealth(raw)
+  }, [simulation.agingFactor])
+  const faultProbabilityPercent = useMemo(() => {
+    if (typeof simulation.faultProbability !== "number") return null
+    const raw = simulation.faultProbability <= 1 ? simulation.faultProbability * 100 : simulation.faultProbability
+    // Show exact value from backend
+    return clampHealth(raw)
+  }, [simulation.faultProbability])
   const blueprint = COMPONENT_HEALTH_BLUEPRINT[componentType] ?? []
   const correlations = useCorrelationInsights(simulation)
   const latestState = useMemo(() => getLatestState(simulation), [simulation])
+  const initialState = useMemo(() => {
+    if (simulation.timeline?.length) {
+      return simulation.timeline[0]?.state ?? simulation.inputValues ?? latestState
+    }
+    if (simulation.inputValues && Object.keys(simulation.inputValues).length > 0) {
+      return simulation.inputValues
+    }
+    return latestState
+  }, [simulation.timeline, simulation.inputValues, latestState])
   const storedHealthScores = simulation.healthScores
   const healthScores = useMemo(() => {
     const computed =
       Object.keys(latestState).length > 0 ? calculateAllHealthScores(componentType, latestState) : {}
     const resolved: Record<string, number> = { ...computed }
+    // Transformer uses 130, other components use 110
+    const subtractValue = componentType === "transformer" ? 130 : 110
+    
     if (storedHealthScores) {
       Object.entries(storedHealthScores).forEach(([key, value]) => {
         if (typeof value === "number" && value > 0) {
-          resolved[key] = value
+          // Subtract from subtractValue for display (other than Stress Score, Fault Probability, Aging Factor)
+          resolved[key] = clampHealth(subtractValue - value)
         }
       })
     }
@@ -863,17 +1158,26 @@ export function SimulationDetail({
       Object.entries(simulation.detailedScores).forEach(([key, value]) => {
         if (typeof value === "number" && value >= 0) {
           const normalized = value <= 1 ? value * 100 : value
-          resolved[key] = clampHealth(normalized)
+          // Subtract from subtractValue for display (other than Stress Score, Fault Probability, Aging Factor)
+          resolved[key] = clampHealth(subtractValue - normalized)
         }
       })
     }
+    // Subtract from subtractValue for computed scores
+    Object.keys(resolved).forEach((key) => {
+      resolved[key] = clampHealth(subtractValue - resolved[key])
+    })
     return resolved
   }, [componentType, latestState, storedHealthScores, simulation.detailedScores])
   const overallHealth = useMemo(() => {
-    const resolved = typeof healthScores.overall === "number" ? healthScores.overall : undefined
-    return clampHealth(resolved ?? deriveOverallHealth(simulation))
-  }, [healthScores.overall, simulation])
-  const heatmap = useMemo(() => generateHeatmapData(simulation), [simulation])
+    // Overall / true health should only come from ML predictors (or legacy
+    // stored ML fields on the document). 
+    // The stored value is already inverted (110 - actual or 130 - actual), so we use it directly
+    const raw = deriveOverallHealth(simulation)
+    // Transformer uses 130, other components use 110
+    // Since the stored value is already inverted, we just use it as-is
+    return clampHealth(raw)
+  }, [simulation, componentType])
   const trend = useMemo(() => generateTrendPrediction(simulation, overallHealth), [simulation, overallHealth])
   const risk = useMemo(() => computeRiskScore(simulation, overallHealth), [simulation, overallHealth])
   const rul = useMemo(() => computeRul(simulation, overallHealth), [simulation, overallHealth])
@@ -882,10 +1186,53 @@ export function SimulationDetail({
   const [selectedMetricKey, setSelectedMetricKey] = useState<string | null>(null)
   const [hasDismissedMetric, setHasDismissedMetric] = useState(false)
   const [videoError, setVideoError] = useState(false)
+  const [syntheticTime, setSyntheticTime] = useState(0)
+  const [isModelPlaying, setIsModelPlaying] = useState(false)
+  
+  // Fixed 15 seconds duration for simulation playback
+  const SIMULATION_DURATION = 15
+  
+  // Use video time if available, otherwise use simulation duration
+  const currentPlaybackTime = videoControls.currentTime || 0
+  const playbackDuration = videoControls.duration > 0 ? videoControls.duration : SIMULATION_DURATION
   const fallbackPlaybackSrc = COMPONENT_VIDEO_LIBRARY[componentType]
   const [videoSource, setVideoSource] = useState<string>(fallbackPlaybackSrc)
   const [hasCustomVideo, setHasCustomVideo] = useState(false)
   const videoSources = useMemo(() => deriveVideoSources(videoSource), [videoSource])
+  const shouldUseModelViewer = videoSources.length === 0 || videoError
+  const effectiveDuration = shouldUseModelViewer ? SIMULATION_DURATION : playbackDuration
+  const effectiveCurrentTime = shouldUseModelViewer ? syntheticTime : currentPlaybackTime
+  const playbackProgress = effectiveDuration > 0 ? effectiveCurrentTime / effectiveDuration : 0
+  const videoRotationStyle = useMemo<CSSProperties>(() => {
+    const clamped = clamp01(playbackProgress)
+    const angle = clamped * 60 // slow rotation towards final view
+    return {
+      transform: `perspective(1400px) rotateX(2deg) rotateY(${angle}deg)`,
+      transition: "transform 0.25s linear",
+      transformOrigin: "center",
+      transformStyle: "preserve-3d",
+    }
+  }, [playbackProgress])
+  useEffect(() => {
+    if (!shouldUseModelViewer) {
+      setIsModelPlaying(false)
+      setSyntheticTime(0)
+      return
+    }
+    if (!isModelPlaying) return
+    const interval = window.setInterval(() => {
+      setSyntheticTime((prev) => {
+        const next = prev + 0.05
+        if (next >= SIMULATION_DURATION) {
+          window.clearInterval(interval)
+          setIsModelPlaying(false)
+          return SIMULATION_DURATION
+        }
+        return next
+      })
+    }, 50)
+    return () => window.clearInterval(interval)
+  }, [isModelPlaying, shouldUseModelViewer])
   const metricSeries = useMemo(() => {
     const series: Record<string, Array<{ time: number; value: number }>> = {}
     if (simulation.timeline?.length) {
@@ -895,18 +1242,200 @@ export function SimulationDetail({
           if (!series[key]) {
             series[key] = []
           }
-          series[key].push({ time: step.time, value })
+          // Use actual health scores for timeline visualization
+          series[key].push({ time: step.time, value: clampHealth(value) })
         })
+        
+        // Add new parameter metrics to timeline (use actual values)
+        if (typeof step.trueHealth === "number") {
+          if (!series.trueHealth) series.trueHealth = []
+          const normalized = step.trueHealth <= 1 ? step.trueHealth * 100 : step.trueHealth
+          series.trueHealth.push({ time: step.time, value: clampHealth(normalized) })
+        }
+        if (typeof step.stressScore === "number") {
+          if (!series.stressScore) series.stressScore = []
+          const normalized = step.stressScore <= 1 ? step.stressScore * 100 : step.stressScore
+          // Display as (100 - value) to show remaining health
+          series.stressScore.push({ time: step.time, value: clampHealth(100 - normalized) })
+        }
+        if (typeof step.faultProbability === "number") {
+          if (!series.faultProbability) series.faultProbability = []
+          const normalized = step.faultProbability <= 1 ? step.faultProbability * 100 : step.faultProbability
+          // Display as (100 - value) to show remaining health
+          series.faultProbability.push({ time: step.time, value: clampHealth(100 - normalized) })
+        }
+        if (typeof step.agingFactor === "number") {
+          if (!series.agingFactor) series.agingFactor = []
+          const normalized = step.agingFactor <= 1 ? step.agingFactor * 100 : step.agingFactor
+          // Display as (100 - value) to show remaining health
+          series.agingFactor.push({ time: step.time, value: clampHealth(100 - normalized) })
+        }
       })
     } else {
       Object.entries(healthScores).forEach(([key, value]) => {
         if (typeof value === "number") {
+          // healthScores are already inverted in the useMemo above
           series[key] = [{ time: 0, value }]
         }
       })
+      
+      // Add static values for new parameters if available (use actual values)
+      if (typeof simulation.overallHealth === "number") {
+        const normalized = simulation.overallHealth <= 1 ? simulation.overallHealth * 100 : simulation.overallHealth
+        series.trueHealth = [{ time: 0, value: clampHealth(normalized) }]
+      }
+      if (typeof simulation.stressScore === "number") {
+        const stressValue = simulation.stressScore <= 1 ? simulation.stressScore * 100 : simulation.stressScore
+        // Display as (100 - value) to show remaining health
+        series.stressScore = [{ time: 0, value: clampHealth(100 - stressValue) }]
+      }
+      if (typeof simulation.faultProbability === "number") {
+        const faultValue = simulation.faultProbability <= 1 ? simulation.faultProbability * 100 : simulation.faultProbability
+        // Display as (100 - value) to show remaining health
+        series.faultProbability = [{ time: 0, value: clampHealth(100 - faultValue) }]
+      }
+      if (typeof simulation.agingFactor === "number") {
+        const agingValue = simulation.agingFactor <= 1 ? simulation.agingFactor * 100 : simulation.agingFactor
+        // Display as (100 - value) to show remaining health
+        series.agingFactor = [{ time: 0, value: clampHealth(100 - agingValue) }]
+      }
     }
     return series
-  }, [componentType, healthScores, simulation.timeline])
+  }, [componentType, healthScores, simulation.timeline, simulation.overallHealth, simulation.stressScore, simulation.faultProbability, simulation.agingFactor])
+  const playbackState = useMemo(() => {
+    if (!simulation.timeline?.length) {
+      return latestState
+    }
+    const progress = playbackDuration > 0 ? videoControls.currentTime / playbackDuration : 0
+    return interpolateTimelineState(simulation, progress) ?? latestState
+  }, [simulation, latestState, playbackDuration, videoControls.currentTime])
+  const playbackParameters = useMemo(() => {
+    const thresholds = PARAMETER_THRESHOLDS[componentType] ?? {}
+    const state = playbackState ?? latestState
+    const keys = Object.keys(thresholds)
+    if (!keys.length) return []
+    return keys
+      .map((key) => {
+        const current = toNumber(state?.[key], NaN)
+        const start = toNumber(initialState?.[key], NaN)
+        const target = toNumber(latestState?.[key], NaN)
+        if (!Number.isFinite(current) || !Number.isFinite(start) || !Number.isFinite(target)) {
+          return null
+        }
+        const delta = target - start
+        const progress =
+          delta === 0 ? 100 : Math.round(clamp01((current - start) / (delta || 1)) * 100)
+        const trend = delta === 0 ? "stable" : delta > 0 ? "up" : "down"
+        return {
+          key,
+          label: formatKey(key),
+          unit: thresholds[key].unit,
+          current,
+          start,
+          target,
+          progress,
+          trend,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((a, b) => Math.abs(b.target - b.start) - Math.abs(a.target - a.start))
+      .slice(0, 8)
+  }, [componentType, playbackState, latestState, initialState])
+  const modelViewerHudMetrics = useMemo(() => {
+    // Get final values from simulation
+    // overallHealth/trueHealth are stored inverted (110 or 130 - value), so we use it directly
+    const rawOverall = deriveOverallHealth(simulation)
+    // The stored value is already inverted, so we use it directly as the final True Health
+    const finalTrueHealth = rawOverall > 0 ? rawOverall : 100 // If no value, default to 100
+    // For transformer: Stress Score is subtracted from 40, for other equipment: exact value
+    const finalStress = componentType === "transformer" 
+      ? (stressPercent !== null ? stressPercent : 0) // Already subtracted from 40 in stressPercent
+      : (stressPercent ?? 0)
+    const finalFault = faultProbabilityPercent ?? 0
+    const finalAging = agingPercent ?? 0
+    
+    // Interpolate from start values to final values based on playback progress
+    const progress = clamp01(playbackProgress)
+    
+    // True Health: starts at 100, reduces to final value (which is already inverted)
+    const startTrueHealth = 100
+    const animatedTrueHealth = startTrueHealth + (finalTrueHealth - startTrueHealth) * progress
+    
+    // For transformer: correctly animate to final values (can increase or decrease)
+    // For other components: Stress Score, Fault Probability, Aging Factor start at 0, increase to final value
+    let animatedStress, animatedFault, animatedAging
+    
+    if (componentType === "transformer") {
+      // Transformer: Stress Score starts at 0, increases to final value (which is 40 - actual)
+      // For transformer, Stress Score final value is already (40 - actual), so we animate from 0 to that
+      animatedStress = 0 + (finalStress - 0) * progress
+      animatedFault = 0 + (finalFault - 0) * progress
+      animatedAging = 0 + (finalAging - 0) * progress
+    } else {
+      // Other components: same logic
+      animatedStress = 0 + (finalStress - 0) * progress
+      animatedFault = 0 + (finalFault - 0) * progress
+      animatedAging = 0 + (finalAging - 0) * progress
+    }
+    
+    return {
+      overall: clampHealth(animatedTrueHealth),
+      stress: clampHealth(animatedStress),
+      fault: clampHealth(animatedFault),
+      aging: clampHealth(animatedAging),
+    }
+  }, [
+    playbackProgress,
+    simulation,
+    componentType,
+    stressPercent,
+    faultProbabilityPercent,
+    agingPercent,
+  ])
+  const modelViewerTimelineSnapshot = useMemo(() => {
+    // Get final values from simulation
+    // overallHealth/trueHealth are stored inverted (110 or 130 - value), so we use it directly
+    const rawOverall = deriveOverallHealth(simulation)
+    // The stored value is already inverted, so we use it directly as the final True Health
+    const finalTrueHealth = rawOverall > 0 ? rawOverall : 100 // If no value, default to 100
+    // For transformer: Stress Score is subtracted from 40, for other equipment: exact value
+    const finalStress = componentType === "transformer" 
+      ? (stressPercent !== null ? stressPercent : 0) // Already subtracted from 40 in stressPercent
+      : (stressPercent ?? 0)
+    const finalFault = faultProbabilityPercent ?? 0
+    const finalAging = agingPercent ?? 0
+    
+    // Interpolate from start values to final values based on playback progress
+    const progress = clamp01(playbackProgress)
+    
+    // True Health: starts at 100, reduces to final value (which is already inverted)
+    const startTrueHealth = 100
+    const animatedTrueHealth = startTrueHealth + (finalTrueHealth - startTrueHealth) * progress
+    
+    // For transformer: correctly animate to final values (can increase or decrease)
+    // For other components: Stress Score, Fault Probability, Aging Factor start at 0, increase to final value
+    let animatedStress, animatedFault, animatedAging
+    
+    if (componentType === "transformer") {
+      // Transformer: Stress Score starts at 0, increases to final value (which is 40 - actual)
+      // For transformer, Stress Score final value is already (40 - actual), so we animate from 0 to that
+      animatedStress = 0 + (finalStress - 0) * progress
+      animatedFault = 0 + (finalFault - 0) * progress
+      animatedAging = 0 + (finalAging - 0) * progress
+    } else {
+      // Other components: same logic
+      animatedStress = 0 + (finalStress - 0) * progress
+      animatedFault = 0 + (finalFault - 0) * progress
+      animatedAging = 0 + (finalAging - 0) * progress
+    }
+    
+    return {
+      trueHealth: clampHealth(animatedTrueHealth),
+      stressScore: clampHealth(animatedStress),
+      faultProbability: clampHealth(animatedFault),
+      agingFactor: clampHealth(animatedAging),
+    }
+  }, [playbackProgress, simulation, componentType, stressPercent, faultProbabilityPercent, agingPercent])
 
   const activeMetric = useMemo(
     () => blueprint.find((metric) => metric.key === selectedMetricKey) ?? null,
@@ -916,24 +1445,6 @@ export function SimulationDetail({
     () => (selectedMetricKey ? metricSeries[selectedMetricKey] ?? [] : []),
     [metricSeries, selectedMetricKey],
   )
-  const stressPercent =
-    typeof simulation.stressScore === "number"
-      ? simulation.stressScore <= 1
-        ? simulation.stressScore * 100
-        : simulation.stressScore
-      : null
-  const agingPercent =
-    typeof simulation.agingFactor === "number"
-      ? simulation.agingFactor <= 1
-        ? simulation.agingFactor * 100
-        : simulation.agingFactor
-      : null
-  const faultProbabilityPercent =
-    typeof simulation.faultProbability === "number"
-      ? simulation.faultProbability <= 1
-        ? simulation.faultProbability * 100
-        : simulation.faultProbability
-      : null
 
   useEffect(() => {
     const trimmed = typeof simulation.videoUrl === "string" ? simulation.videoUrl.trim() : ""
@@ -951,6 +1462,11 @@ export function SimulationDetail({
     setHasCustomVideo(hasAnyCustomVideo)
     setVideoError(false)
   }, [simulation.id, simulation.videoUrl, fallbackPlaybackSrc])
+
+useEffect(() => {
+  setSyntheticTime(0)
+  setIsModelPlaying(shouldUseModelViewer)
+}, [simulation.id, shouldUseModelViewer])
 
   useEffect(() => {
     if (!blueprint.length) {
@@ -999,6 +1515,21 @@ export function SimulationDetail({
   }
 
   const stackedButtonClass = "flex flex-col items-center justify-center gap-1 w-24 h-auto py-3 px-3 text-xs font-semibold"
+  const isPlaybackActive = shouldUseModelViewer ? isModelPlaying : videoControls.isPlaying
+  const handlePlaybackToggle = () => {
+    if (shouldUseModelViewer) {
+      setIsModelPlaying((prev) => !prev)
+      return
+    }
+    videoControls.togglePlay()
+  }
+  const handleProgressScrub = (value: number) => {
+    if (shouldUseModelViewer) {
+      setSyntheticTime(Math.min(Math.max(0, value), SIMULATION_DURATION))
+      return
+    }
+    videoControls.updateTime(value)
+  }
 
   const riskGaugePercent = Number.isFinite(risk.riskScore)
     ? Math.min(100, Math.max(0, (risk.riskScore / 10) * 100))
@@ -1155,27 +1686,46 @@ export function SimulationDetail({
             </p>
           </CardHeader>
           <CardContent className="pt-6 space-y-4">
-            <div className="rounded-xl border overflow-hidden relative">
-              {videoSources.length > 0 ? (
-                <video
-                  key={simulation.id}
-                  ref={videoControls.videoRef}
-                  className="w-full h-64 object-cover"
-                  poster="/placeholder.jpg"
-                  controls={false}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  onError={handleVideoError}
-                >
-                  {videoSources.map((source) => (
-                    <source key={`${source.type}-${source.src}`} src={source.src} type={source.type} />
-                  ))}
-                </video>
+            <div className="rounded-xl border overflow-hidden relative h-72">
+              {shouldUseModelViewer ? (
+                <ModelViewer
+                  key={`model-${simulation.id}`}
+                  modelPath={simulation.assetMetadata?.model ?? null}
+                  componentType={simulation.componentType}
+                  useFallback
+                  autoRotate
+                  className="h-full"
+                  hudMetrics={modelViewerHudMetrics}
+                  hudVisible
+                  timelineSnapshot={modelViewerTimelineSnapshot}
+                  simulationProgress={clamp01(playbackProgress)}
+                  showParameterColor
+                />
               ) : (
-                <div className="w-full h-64 flex items-center justify-center bg-muted text-sm text-muted-foreground">
-                  No video available for this simulation
-                </div>
+                <>
+                  {videoSources.length > 0 ? (
+                    <video
+                      key={simulation.id}
+                      ref={videoControls.videoRef}
+                      className="w-full h-72 object-cover"
+                      style={videoRotationStyle}
+                      poster="/placeholder.jpg"
+                      controls={false}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      onError={handleVideoError}
+                    >
+                      {videoSources.map((source) => (
+                        <source key={`${source.type}-${source.src}`} src={source.src} type={source.type} />
+                      ))}
+                    </video>
+                  ) : (
+                    <div className="w-full h-72 flex items-center justify-center bg-muted text-sm text-muted-foreground">
+                      No video available for this simulation
+                    </div>
+                  )}
+                </>
               )}
               {videoError && videoSources.length > 0 && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-sm">
@@ -1184,8 +1734,8 @@ export function SimulationDetail({
               )}
             </div>
             <div className="flex flex-wrap items-center gap-4">
-              <Button variant="outline" size="sm" onClick={videoControls.togglePlay} disabled={videoError}>
-                {videoControls.isPlaying ? (
+              <Button variant="outline" size="sm" onClick={handlePlaybackToggle} disabled={videoError && !shouldUseModelViewer}>
+                {isPlaybackActive ? (
                   <>
                     <PauseCircle className="h-4 w-4 mr-2" /> Pause
                   </>
@@ -1223,19 +1773,30 @@ export function SimulationDetail({
                 <Maximize2 className="h-4 w-4 mr-2" />
                 Fullscreen
               </Button>
+              {hasCustomVideo && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadVideo(simulation.videoUrl, `simulation-${simulation.id}.mp4`)}
+                  disabled={videoError || !simulation.videoUrl}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+              )}
               <div className="flex-1">
                 <Slider
                   min={0}
-                  max={videoControls.duration || 1}
+                  max={effectiveDuration || 1}
                   step={0.1}
-                  value={[videoControls.currentTime]}
-                  onValueChange={([value]) => videoControls.updateTime(value)}
-                  disabled={videoError}
+                  value={[effectiveCurrentTime]}
+                  onValueChange={([value]) => handleProgressScrub(value)}
+                  disabled={videoError && !shouldUseModelViewer}
                 />
               </div>
               <div className="text-xs text-muted-foreground text-right">
                 <p>
-                  {videoControls.currentTime.toFixed(1)}s / {videoControls.duration.toFixed(1)}s
+                  {effectiveCurrentTime.toFixed(1)}s / {effectiveDuration.toFixed(1)}s
                 </p>
                 <p>15s performance replay</p>
               </div>
@@ -1243,7 +1804,6 @@ export function SimulationDetail({
           </CardContent>
         </Card>
       )}
-
       <Card>
         <CardHeader className="border-b">
           <CardTitle>Health & Severity Overview</CardTitle>
@@ -1272,33 +1832,6 @@ export function SimulationDetail({
                 <p className="text-2xl font-semibold text-emerald-600">{agingPercent.toFixed(1)}%</p>
               </div>
             )}
-          </div>
-          <Separator />
-          <div className="space-y-3">
-            {heatmap.length === 0 && (
-              <p className="text-sm text-muted-foreground">No severity metrics available.</p>
-            )}
-            {heatmap.map((item) => {
-              const theme = SEVERITY_THEME[item.severity] ?? SEVERITY_THEME.normal
-              return (
-                <div
-                  key={item.key}
-                  className={cn(
-                    "flex items-center justify-between rounded-lg border px-3 py-2 text-sm",
-                    theme.bg,
-                    theme.border,
-                  )}
-                >
-                  <div>
-                    <p className="font-medium">{item.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.value ?? "-"} {item.unit ?? ""}
-                    </p>
-                  </div>
-                  <span className="text-lg">{theme.emoji}</span>
-                </div>
-              )
-            })}
           </div>
           <Separator />
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

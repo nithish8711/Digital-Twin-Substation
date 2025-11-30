@@ -37,6 +37,7 @@ const REALTIME_CATEGORY_KEYS: Record<string, string> = {
   transformer: "transformer",
   circuitBreaker: "circuitBreaker",
   isolator: "isolator",
+  busbar: "busbar",
   others: "others",
 }
 
@@ -158,10 +159,10 @@ export const dataGenerators = {
   }),
 
   transformer: () => ({
-    oilLevel: randomDeviation(75, 5), // 75% ± 5%
-    oilTemperature: randomDeviation(65, 8), // 65°C ± 8%
+    oilLevel: randomDeviation(95, 2), // 95% ± 2%
+    oilTemperature: randomDeviation(55, 8), // 55°C ± 8%
     gasLevel: randomDeviation(200, 15), // 200ppm ± 15%
-    windingTemperature: randomDeviation(85, 10), // 85°C ± 10%
+    windingTemperature: randomDeviation(65, 10), // 65°C ± 10%
     tapPosition: randomIntDeviation(0, 20), // 0 ± 20%
     transformerLoading: randomDeviation(85, 15),
     hydrogenGas: randomDeviation(150, 20),
@@ -192,6 +193,15 @@ export const dataGenerators = {
     operatingTime: randomDeviation(3.5, 15), // seconds
     contactResistance: randomRange(40, 120, 1), // µΩ
     motorCurrent: randomDeviation(18, 15), // A
+  }),
+
+  busbar: () => ({
+    busVoltage: randomDeviation(400, 2),
+    busCurrent: randomDeviation(2500, 8),
+    busbarTemperature: randomDeviation(65, 12),
+    jointHotspotTemp: randomDeviation(85, 10),
+    busbarLoad: randomDeviation(75, 12),
+    impedanceMicroOhm: randomDeviation(55, 8),
   }),
 
   others: () => ({

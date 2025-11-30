@@ -11,8 +11,8 @@ export function TopNav() {
 
         <div className="mr-4 hidden md:flex">
           <Link href="/" className="mr-6 flex items-center space-x-2">
-            <span className="hidden font-bold sm:inline-block text-xl tracking-tight">
-              OCEANBERG <span className="text-blue-600">DIGITAL TWIN</span>
+            <span className="hidden font-bold sm:inline-block text-xl tracking-tight text-black">
+              OCEANBERG <span className="text-black">DIGITAL TWIN</span>
             </span>
           </Link>
         </div>
@@ -21,21 +21,21 @@ export function TopNav() {
           <nav className="flex items-center space-x-2">
             <Button
               variant="default"
-              className="bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all"
+              className="shadow-md transition-all"
               asChild
             >
               <Link href="/view-substations">View Substations</Link>
             </Button>
             <Button
               variant="default"
-              className="bg-green-600 hover:bg-green-700 text-white shadow-md transition-all"
+              className="shadow-md transition-all"
               asChild
             >
               <Link href="/create-substation">Create Substation</Link>
             </Button>
             <Button
               variant="default"
-              className="bg-orange-600 hover:bg-orange-700 text-white shadow-md transition-all"
+              className="shadow-md transition-all"
               asChild
             >
               <Link href="/manage-substations">Manage Substations</Link>

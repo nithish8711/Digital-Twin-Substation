@@ -10,6 +10,7 @@ import { TransformerPanel } from "@/components/live-trend/transformer-panel"
 import { BayLinesPanel } from "@/components/live-trend/bay-lines-panel"
 import { CircuitBreakerPanel } from "@/components/live-trend/circuit-breaker-panel"
 import { IsolatorPanel } from "@/components/live-trend/isolator-panel"
+import { BusbarPanel } from "@/components/live-trend/busbar-panel"
 import { OthersPanel } from "@/components/live-trend/others-panel"
 import { ModelViewer } from "@/components/live-trend/model-viewer"
 import { useLiveData, dataGenerators } from "@/hooks/use-live-data"
@@ -34,6 +35,9 @@ const LazyCircuitBreakerPanel = lazy(() =>
 const LazyIsolatorPanel = lazy(() =>
   Promise.resolve({ default: IsolatorPanel })
 )
+const LazyBusbarPanel = lazy(() =>
+  Promise.resolve({ default: BusbarPanel })
+)
 const LazyOthersPanel = lazy(() =>
   Promise.resolve({ default: OthersPanel })
 )
@@ -54,6 +58,7 @@ function useCriticalValues() {
   const transformerData = useLiveData("transformer", dataGenerators.transformer)
   const bayLinesData = useLiveData("bayLines", dataGenerators.bayLines)
   const circuitBreakerData = useLiveData("circuitBreaker", dataGenerators.circuitBreaker)
+  const busbarData = useLiveData("busbar", dataGenerators.busbar)
   const othersData = useLiveData("others", dataGenerators.others)
 
   return useMemo(() => {
@@ -105,6 +110,14 @@ function useCriticalValues() {
       { key: "operationCount", label: "Operation Count", unit: "count" },
     ])
 
+    // Busbar parameters
+    checkParameter(busbarData, "Busbar", [
+      { key: "busVoltage", label: "Bus Voltage", unit: "kV" },
+      { key: "busCurrent", label: "Bus Current", unit: "A" },
+      { key: "busbarTemperature", label: "Bus Temperature", unit: "°C" },
+      { key: "busbarLoad", label: "Bus Load", unit: "%" },
+    ])
+
     // Others parameters
     checkParameter(othersData, "Others", [
       { key: "tripCount", label: "Trip Count", unit: "count" },
@@ -112,7 +125,7 @@ function useCriticalValues() {
     ])
 
     return criticalValues
-  }, [substationData, transformerData, bayLinesData, circuitBreakerData, othersData])
+  }, [substationData, transformerData, bayLinesData, circuitBreakerData, busbarData, othersData])
 }
 
 // Helper to get glow data for each category
@@ -120,6 +133,7 @@ function useGlowData(category: string) {
   const transformerData = useLiveData("transformer", dataGenerators.transformer)
   const bayLinesData = useLiveData("bayLines", dataGenerators.bayLines)
   const circuitBreakerData = useLiveData("circuitBreaker", dataGenerators.circuitBreaker)
+  const busbarData = useLiveData("busbar", dataGenerators.busbar)
 
   return useMemo(() => {
     const glow: Record<string, number | string> = {}
@@ -144,10 +158,15 @@ function useGlowData(category: string) {
       const maxOps = 10000
       const percent = (circuitBreakerData.operationCount / maxOps) * 100
       if (percent > 50) glow.operationCount = circuitBreakerData.operationCount
+    } else if (category === "busbar") {
+      if (busbarData.busbarLoad > 80) glow.busbarLoad = busbarData.busbarLoad
+      if (busbarData.busbarTemperature > 80) glow.busbarTemperature = busbarData.busbarTemperature
+      if (busbarData.jointHotspotTemp > 95) glow.jointHotspotTemp = busbarData.jointHotspotTemp
+      if (busbarData.impedanceMicroOhm > 65) glow.impedanceMicroOhm = busbarData.impedanceMicroOhm
     }
 
     return glow
-  }, [category, transformerData, bayLinesData, circuitBreakerData])
+  }, [category, transformerData, bayLinesData, circuitBreakerData, busbarData])
 }
 
 export default function LiveTrendPage() {
@@ -263,7 +282,6 @@ export default function LiveTrendPage() {
             </div>
             <Button 
               onClick={handleSearch} 
-              className="bg-blue-600 hover:bg-blue-700"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -368,6 +386,9 @@ export default function LiveTrendPage() {
                 {activeCategory === "circuitBreaker" && (
                   <LazyCircuitBreakerPanel />
                 )}
+                {activeCategory === "busbar" && (
+                  <LazyBusbarPanel />
+                )}
                 {activeCategory === "isolator" && (
                   <LazyIsolatorPanel />
                 )}
@@ -444,6 +465,24 @@ export default function LiveTrendPage() {
                       showGlow={Object.keys(glowData).length > 0}
                       className="w-full h-full"
                       componentType="circuitBreaker"
+                      useFallback
+                    />
+                  </CardContent>
+                </Card>
+              )}
+              {activeCategory === "busbar" && (
+                <Card className="h-full overflow-hidden flex flex-col">
+                  <CardHeader className="flex-shrink-0">
+                    <CardTitle>3D Model View</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1 min-h-0">
+                    <ModelViewer
+                      key="busbar-model"
+                      modelPath={null}
+                      glowData={glowData}
+                      showGlow={Object.keys(glowData).length > 0}
+                      className="w-full h-full"
+                      componentType="busbar"
                       useFallback
                     />
                   </CardContent>

@@ -8,6 +8,7 @@ import type { ComponentType } from "@/lib/analysis-config"
 import { captureVideoFromCanvas } from "@/lib/video-capture"
 import type { SimulationResult } from "@/lib/simulation-engine"
 import { calculateAllHealthScores } from "@/lib/simulation-engine"
+import { applyTimelineColorTransition } from "@/lib/live-trend/parameter-color-mapping"
 
 interface SimulationModelViewerProps {
   inputValues?: Record<string, number | string>
@@ -29,12 +30,20 @@ const MODEL_PATHS: Partial<Record<ComponentType, string>> = {
   busbar: "/models/busbar/busbar.glb",
 }
 
+const BASELINE_METRICS = {
+  trueHealth: 100,
+  stressScore: 0,
+  faultProbability: 0,
+  agingFactor: 100,
+  healthScore: 100,
+}
+
 export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, SimulationModelViewerProps>(
   function SimulationModelViewer({ inputValues = {} }: SimulationModelViewerProps, ref) {
     const { selectedComponent } = useSimulation()
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const isMountedRef = useRef(true)
-    const [timelineSnapshot, setTimelineSnapshot] = useState<Record<string, number | string> | null>(null)
+    const [timelineSnapshot, setTimelineSnapshot] = useState<Record<string, number | string> | null>({ ...BASELINE_METRICS })
     const [isTimelinePlaybackActive, setIsTimelinePlaybackActive] = useState(false)
     const [playbackProgress, setPlaybackProgress] = useState(0)
     const timelinePlaybackCleanupRef = useRef<(() => void) | null>(null)
@@ -58,6 +67,93 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
       timelinePlaybackCleanupRef.current = null
     }, [])
 
+    const lerpNumber = useCallback((a: number | undefined, b: number | undefined, t: number) => {
+      if (typeof a === "number" && typeof b === "number") {
+        return a + (b - a) * t
+      }
+      if (typeof a === "number") return a
+      if (typeof b === "number") return b
+      return undefined
+    }, [])
+
+    const interpolateTimelineState = useCallback(
+      (fromStep: SimulationResult["timeline"][number], toStep: SimulationResult["timeline"][number], mix: number) => {
+        const interpolatedState: Record<string, number | string> = {}
+        const keys = new Set([
+          ...Object.keys(fromStep.state ?? {}),
+          ...Object.keys(toStep.state ?? {}),
+          "trueHealth",
+          "stressScore",
+          "faultProbability",
+          "agingFactor",
+          "healthScore",
+        ])
+
+        keys.forEach((key) => {
+          const fromVal = (fromStep.state ?? {})[key]
+          const toVal = (toStep.state ?? {})[key]
+
+          if (typeof fromVal === "number" || typeof toVal === "number") {
+            const blended = lerpNumber(
+              typeof fromVal === "number" ? fromVal : undefined,
+              typeof toVal === "number" ? toVal : undefined,
+              mix,
+            )
+            if (typeof blended === "number") {
+              interpolatedState[key] = Number.isFinite(blended) ? blended : 0
+              return
+            }
+          }
+
+          if (mix < 0.5) {
+            if (typeof fromVal !== "undefined") {
+              interpolatedState[key] = fromVal
+              return
+            }
+          } else if (typeof toVal !== "undefined") {
+            interpolatedState[key] = toVal
+            return
+          }
+        })
+
+        const trueHealth =
+          lerpNumber(fromStep.trueHealth, toStep.trueHealth, mix) ??
+          lerpNumber(fromStep.healthScore, toStep.healthScore, mix) ??
+          BASELINE_METRICS.trueHealth
+        const stressScore = lerpNumber(fromStep.stressScore, toStep.stressScore, mix) ?? BASELINE_METRICS.stressScore
+        const faultProbability =
+          lerpNumber(fromStep.faultProbability, toStep.faultProbability, mix) ?? BASELINE_METRICS.faultProbability
+        const agingFactor = lerpNumber(fromStep.agingFactor, toStep.agingFactor, mix) ?? BASELINE_METRICS.agingFactor
+
+        return {
+          ...interpolatedState,
+          trueHealth,
+          stressScore,
+          faultProbability,
+          agingFactor,
+          healthScore: lerpNumber(fromStep.healthScore, toStep.healthScore, mix) ?? trueHealth,
+          time: lerpNumber(fromStep.time, toStep.time, mix) ?? toStep.time ?? fromStep.time,
+        }
+      },
+      [lerpNumber],
+    )
+
+    const createBaselineStep = useCallback(
+      (reference?: SimulationResult["timeline"][number]) => {
+        const referenceState = reference?.state ?? {}
+        return {
+          state: referenceState,
+          trueHealth: BASELINE_METRICS.trueHealth,
+          stressScore: BASELINE_METRICS.stressScore,
+          faultProbability: BASELINE_METRICS.faultProbability,
+          agingFactor: BASELINE_METRICS.agingFactor,
+          healthScore: BASELINE_METRICS.healthScore,
+          time: 0,
+        }
+      },
+      [],
+    )
+
     const startTimelinePlayback = useCallback(
       (timeline: SimulationResult["timeline"], clipDuration: number) => {
         stopTimelinePlayback()
@@ -65,114 +161,164 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
           return
         }
 
-        const states = timeline.map((step) => step.state)
+        const baselineStep = createBaselineStep(timeline[0])
+        const timelineSteps = [baselineStep, ...timeline]
         const durationMs = Math.max(1000, clipDuration * 1000)
         const playbackStart = performance.now()
         let frameId: number | null = null
         let lastIndex = -1
+        let lastMix = 0
+        let lastProgress = -1
+        let lastUpdateTime = performance.now()
 
-        const cleanup = () => {
+        if (isMountedRef.current) {
+          setTimelineSnapshot({
+            ...baselineStep.state,
+            trueHealth: baselineStep.trueHealth,
+            stressScore: baselineStep.stressScore,
+            faultProbability: baselineStep.faultProbability,
+            agingFactor: baselineStep.agingFactor,
+            healthScore: baselineStep.healthScore,
+            time: baselineStep.time,
+          })
+          setIsTimelinePlaybackActive(true)
+          setPlaybackProgress(0)
+        }
+
+        const cleanup = (completed = false) => {
           if (frameId !== null) {
             cancelAnimationFrame(frameId)
             frameId = null
           }
           if (isMountedRef.current) {
             setIsTimelinePlaybackActive(false)
+            setPlaybackProgress(completed ? 1 : 0)
           }
         }
 
         const tick = () => {
           const elapsed = performance.now() - playbackStart
           const progress = Math.min(1, elapsed / durationMs)
-          const index = Math.min(states.length - 1, Math.round(progress * (states.length - 1)))
-          if (isMountedRef.current && index !== lastIndex) {
-            lastIndex = index
-            setTimelineSnapshot(states[index])
-            setIsTimelinePlaybackActive(true)
+          const floatIndex = progress * (timelineSteps.length - 1)
+          const lowerIndex = Math.max(0, Math.floor(floatIndex))
+          const upperIndex = Math.min(timelineSteps.length - 1, lowerIndex + 1)
+          const mix = upperIndex === lowerIndex ? 0 : floatIndex - lowerIndex
+
+          if (!isMountedRef.current) return
+
+          const now = performance.now()
+          const timeSinceLastUpdate = now - lastUpdateTime
+
+          // Update snapshot when index changes or mix changes significantly (throttled to prevent loops)
+          const shouldUpdateSnapshot = (lowerIndex !== lastIndex || Math.abs(mix - lastMix) > 0.01) && timeSinceLastUpdate >= 50
+
+          // Throttle progress updates to prevent infinite loops (update every ~50ms = 20fps)
+          const shouldUpdateProgress = timeSinceLastUpdate >= 50 || progress === 1 || progress === 0
+
+          if (shouldUpdateSnapshot) {
+            lastIndex = lowerIndex
+            lastMix = mix
+            const interpolatedSnapshot = interpolateTimelineState(
+              timelineSteps[lowerIndex],
+              timelineSteps[upperIndex],
+              mix,
+            )
+
+            setTimelineSnapshot(interpolatedSnapshot)
+            lastUpdateTime = now
+          }
+
+          if (shouldUpdateProgress && Math.abs(progress - lastProgress) > 0.01) {
+            lastProgress = progress
+            lastUpdateTime = now
             setPlaybackProgress(progress)
           }
+
           if (progress < 1) {
             frameId = requestAnimationFrame(tick)
           } else {
-            cleanup()
+            cleanup(true)
           }
         }
 
         frameId = requestAnimationFrame(tick)
-        timelinePlaybackCleanupRef.current = cleanup
+        timelinePlaybackCleanupRef.current = () => cleanup(false)
       },
-      [stopTimelinePlayback],
+      [createBaselineStep, interpolateTimelineState, stopTimelinePlayback],
     )
 
     // Generate glow data from input values for visual feedback
-    const activeInputs = timelineSnapshot ?? inputValues
+    const activeInputs = useMemo(() => {
+      const base: Record<string, number | string> = { ...inputValues }
+      if (timelineSnapshot) {
+        return { ...base, ...timelineSnapshot }
+      }
+      return { ...base, ...BASELINE_METRICS }
+    }, [inputValues, timelineSnapshot])
     const glowData = useMemo(() => {
       const glow: Record<string, number | string> = {}
 
+      const inputs = activeInputs as Record<string, number | string>
+
       if (selectedComponent === "transformer") {
-        if (activeInputs.oilLevel && typeof activeInputs.oilLevel === "number" && activeInputs.oilLevel < 70) {
-          glow.oilLevel = activeInputs.oilLevel
+        if (typeof inputs.oilLevel === "number" && inputs.oilLevel < 70) {
+          glow.oilLevel = inputs.oilLevel
         }
         if (
-          activeInputs.oilTemperature &&
-          typeof activeInputs.oilTemperature === "number" &&
-          activeInputs.oilTemperature > 70
+          typeof inputs.oilTemperature === "number" &&
+          inputs.oilTemperature > 70
         ) {
-          glow.oilTemperature = activeInputs.oilTemperature
+          glow.oilTemperature = inputs.oilTemperature
         }
         if (
-          activeInputs.windingTemperature &&
-          typeof activeInputs.windingTemperature === "number" &&
-          activeInputs.windingTemperature > 85
+          typeof inputs.windingTemperature === "number" &&
+          inputs.windingTemperature > 85
         ) {
-          glow.windingTemperature = activeInputs.windingTemperature
+          glow.windingTemperature = inputs.windingTemperature
         }
         if (
-          activeInputs.hydrogenPPM &&
-          typeof activeInputs.hydrogenPPM === "number" &&
-          activeInputs.hydrogenPPM > 150
+          typeof inputs.hydrogenPPM === "number" &&
+          inputs.hydrogenPPM > 150
         ) {
-          glow.hydrogenPPM = activeInputs.hydrogenPPM
+          glow.hydrogenPPM = inputs.hydrogenPPM
         }
       } else if (selectedComponent === "bayLines") {
         if (
-          activeInputs.ctBurdenPercent &&
-          typeof activeInputs.ctBurdenPercent === "number" &&
-          activeInputs.ctBurdenPercent > 70
+          typeof inputs.ctBurdenPercent === "number" &&
+          inputs.ctBurdenPercent > 70
         ) {
-          glow.ctBurdenPercent = activeInputs.ctBurdenPercent
+          glow.ctBurdenPercent = inputs.ctBurdenPercent
         }
         if (
-          activeInputs.frequencyHz &&
-          typeof activeInputs.frequencyHz === "number" &&
-          (activeInputs.frequencyHz < 49.8 || activeInputs.frequencyHz > 50.2)
+          typeof inputs.frequencyHz === "number" &&
+          (inputs.frequencyHz < 49.8 || inputs.frequencyHz > 50.2)
         ) {
-          glow.frequencyHz = activeInputs.frequencyHz
+          glow.frequencyHz = inputs.frequencyHz
         }
       } else if (selectedComponent === "circuitBreaker") {
         if (
-          activeInputs.sf6DensityPercent &&
-          typeof activeInputs.sf6DensityPercent === "number" &&
-          activeInputs.sf6DensityPercent < 95
+          typeof inputs.sf6DensityPercent === "number" &&
+          inputs.sf6DensityPercent < 95
         ) {
-          glow.sf6DensityPercent = activeInputs.sf6DensityPercent
+          glow.sf6DensityPercent = inputs.sf6DensityPercent
         }
       } else if (selectedComponent === "busbar") {
         if (
-          activeInputs.busbarTemperature &&
-          typeof activeInputs.busbarTemperature === "number" &&
-          activeInputs.busbarTemperature > 80
+          typeof inputs.busbarTemperature === "number" &&
+          inputs.busbarTemperature > 80
         ) {
-          glow.busbarTemperature = activeInputs.busbarTemperature
+          glow.busbarTemperature = inputs.busbarTemperature
         }
         if (
-          activeInputs.busbarLoadPercent &&
-          typeof activeInputs.busbarLoadPercent === "number" &&
-          activeInputs.busbarLoadPercent > 90
+          typeof inputs.busbarLoadPercent === "number" &&
+          inputs.busbarLoadPercent > 90
         ) {
-          glow.busbarLoadPercent = activeInputs.busbarLoadPercent
+          glow.busbarLoadPercent = inputs.busbarLoadPercent
         }
       }
+
+      // Don't add simulation parameters to glowData - no glow effect needed
+      // Parameter values will still update in HUD display
 
       return glow
     }, [selectedComponent, activeInputs])
@@ -238,34 +384,39 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
       }
     }, [modelPath])
 
-    // Derive simple visual stats (health, fault, stress, aging) from the active inputs.
+    // Use timeline snapshot data for visual stats - update whenever timelineSnapshot changes
     useEffect(() => {
       try {
-        const scores = calculateAllHealthScores(selectedComponent as any, activeInputs as any)
-        const overallTarget = typeof scores.overall === "number" ? scores.overall : 0
-        const p = Math.min(1, Math.max(0, playbackProgress))
+        if (timelineSnapshot) {
+          // Use actual timeline data when available - allows smooth parameter updates
+          const overall = Number(timelineSnapshot.trueHealth ?? 100)
+          const fault = Number(timelineSnapshot.faultProbability ?? 0)
+          const stress = Number(timelineSnapshot.stressScore ?? 0)
+          const aging = Number(timelineSnapshot.agingFactor ?? 100)
 
-        // Targets derived from true health
-        const faultTarget = Math.min(100, Math.max(0, 100 - overallTarget))
-        const stressTarget = Math.min(100, Math.max(0, 120 - overallTarget * 0.8))
-        const agingTarget = Math.min(100, Math.max(0, overallTarget))
+          setVisualStats({
+            overall: Number.isFinite(overall) ? overall : 100,
+            fault: Number.isFinite(fault) ? fault : 0,
+            stress: Number.isFinite(stress) ? stress : 0,
+            aging: Number.isFinite(aging) ? aging : 100,
+          })
+        } else {
+          // Fallback to calculated values when no timeline data
+          const scores = calculateAllHealthScores(selectedComponent as any, activeInputs as any)
+          const overallTarget = typeof scores.overall === "number" ? scores.overall : 100
 
-        // Animate from ideal state at start (Health 100 / Fault 0 / Stress 0 / Aging 100)
-        const healthDisplay = 100 - (100 - overallTarget) * p
-        const faultDisplay = faultTarget * p
-        const stressDisplay = stressTarget * p
-        const agingDisplay = 100 - (100 - agingTarget) * p
-
-        setVisualStats({
-          overall: healthDisplay,
-          fault: faultDisplay,
-          stress: stressDisplay,
-          aging: agingDisplay,
-        })
-      } catch {
+          setVisualStats({
+            overall: overallTarget,
+            fault: Math.max(0, 100 - overallTarget),
+            stress: Math.max(0, Math.min(100, (100 - overallTarget) * 1.2)),
+            aging: Math.max(0, overallTarget * 0.9),
+          })
+        }
+      } catch (error) {
+        console.warn("[VisualStats] Error calculating stats:", error)
         setVisualStats(null)
       }
-    }, [selectedComponent, activeInputs, playbackProgress])
+    }, [selectedComponent, activeInputs, timelineSnapshot])
 
     useImperativeHandle(
       ref,
@@ -274,23 +425,35 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
           if (!canvasRef.current) {
             throw new Error("Simulation viewer not ready for video capture")
           }
-          const duration = options?.duration ?? 15
+          const duration = options?.duration ?? 14
+          
+          console.log("[VideoCapture] Starting video capture with timeline:", options?.timeline?.length, "steps")
+          
           if (options?.timeline?.length) {
+            // Start timeline playback
             startTimelinePlayback(options.timeline, duration)
+
+            // Wait a moment for the animation to start
+            await new Promise((resolve) => setTimeout(resolve, 120))
           } else {
             setIsTimelinePlaybackActive(true)
+            setPlaybackProgress(0)
           }
+          
           try {
+            console.log("[VideoCapture] Beginning canvas capture...")
             return await captureVideoFromCanvas({
               canvas: canvasRef.current,
               duration,
               onProgress: options?.onProgress,
             })
           } finally {
+            console.log("[VideoCapture] Cleaning up timeline playback...")
             if (options?.timeline?.length) {
               stopTimelinePlayback()
             } else {
               setIsTimelinePlaybackActive(false)
+              setPlaybackProgress(0)
             }
           }
         },
@@ -312,7 +475,9 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
               useFallback={forceFallbackModel}
               autoRotate={isTimelinePlaybackActive || playbackProgress > 0}
               glowData={glowData}
-              showGlow={playbackProgress > 0.2 && Object.keys(glowData).length > 0}
+              showGlow={false}
+              timelineSnapshot={timelineSnapshot}
+              simulationProgress={playbackProgress}
               hudMetrics={visualStats}
               hudVisible={Boolean(visualStats)}
               onCanvasReady={(canvas) => {

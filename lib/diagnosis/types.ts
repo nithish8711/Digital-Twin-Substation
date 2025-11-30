@@ -102,5 +102,10 @@ export interface DiagnosisApiResponse {
   events: DiagnosisEventLog[]
   trend_history: Record<string, number[]>
   live_source?: string
+  // ML model scores from backend
+  LSTM_ForecastScore?: number
+  IsolationForestScore?: number
+  XGBoost_FaultScore?: number
+  Top3_HealthImpactFactors?: string[]
 }
 

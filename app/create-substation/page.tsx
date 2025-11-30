@@ -44,16 +44,16 @@ export default function CreateSubstationPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 h-14 p-1 bg-muted/50 rounded-lg">
+        <TabsList className="grid w-full grid-cols-2 h-14 p-1 bg-transparent rounded-lg gap-2">
           <TabsTrigger
             value="upload"
-            className="h-12 data-[state=active]:bg-white data-[state=active]:text-purple-700 data-[state=active]:shadow-sm text-base"
+            className="h-12 bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white data-[state=active]:border-[#1A1A1A] text-base"
           >
             Option A: Upload Template
           </TabsTrigger>
           <TabsTrigger
             value="manual"
-            className="h-12 data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm text-base"
+            className="h-12 bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 data-[state=active]:bg-[#1A1A1A] data-[state=active]:text-white data-[state=active]:border-[#1A1A1A] text-base"
           >
             Option B: Manual Entry
           </TabsTrigger>
@@ -111,7 +111,8 @@ export default function CreateSubstationPage() {
               </CardContent>
               <CardFooter>
                 <Button
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                  variant="default"
+                  className="w-full"
                   disabled={!file || isUploading || uploadSuccess}
                   onClick={handleUpload}
                 >

@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
-import { AlertCircle, Loader2, RefreshCw, ShieldAlert } from "lucide-react"
+import { AlertCircle, ShieldAlert } from "lucide-react"
 
 import { DiagnosisSearchBar } from "@/components/diagnosis/diagnosis-search-bar"
 import { HealthPanel } from "@/components/diagnosis/health-panel"
@@ -31,21 +31,24 @@ export default function DiagnosisPage() {
   const [areaInput, setAreaInput] = useState("")
   const [query, setQuery] = useState<{ areaCode: string; substationId: string } | null>(null)
   const [data, setData] = useState<DiagnosisApiResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [masterDetails, setMasterDetails] = useState<DummySubstation["master"] | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
+  const isInitialFetch = useRef(true)
 
   useEffect(() => {
     if (!query?.areaCode || !query?.substationId) return
     let isCancelled = false
     const controller = new AbortController()
 
-    const fetchData = async () => {
-      setIsLoading(true)
+    const fetchData = async (isInitial: boolean) => {
       setError(null)
+      if (isInitial) {
+        setIsLoading(true)
+      }
       try {
         const response = await fetch("/api/diagnosis/component", {
           method: "POST",
@@ -66,26 +69,26 @@ export default function DiagnosisPage() {
         if (!isCancelled) {
           setData(payload)
           setLastUpdated(new Date().toISOString())
+          setIsLoading(false)
         }
       } catch (err) {
         if (!isCancelled) {
           console.error(err)
           setError("Unable to fetch diagnosis data. Check Firebase/ML backend.")
-        }
-      } finally {
-        if (!isCancelled) {
           setIsLoading(false)
         }
       }
     }
 
-    fetchData()
-    const interval = setInterval(fetchData, 15000)
+    fetchData(true) // Initial fetch with loading
+    isInitialFetch.current = false
+    const interval = setInterval(() => fetchData(false), 5000) // Subsequent fetches without loading
 
     return () => {
       isCancelled = true
       controller.abort()
       clearInterval(interval)
+      isInitialFetch.current = true // Reset for next query
     }
   }, [query?.areaCode, query?.substationId, activeComponent, refreshToken])
 
@@ -117,11 +120,6 @@ export default function DiagnosisPage() {
     if (!trimmed) return
     const fallbackId = trimmed
     setQuery({ areaCode: trimmed, substationId: fallbackId })
-  }
-
-  const handleManualRefresh = () => {
-    if (!query) return
-    setRefreshToken((prev) => prev + 1)
   }
 
   const handleNotify = async ({ notes, files }: { notes: string; files: File[] }) => {
@@ -193,7 +191,7 @@ export default function DiagnosisPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-8rem)] overflow-y-auto space-y-6 p-4">
+    <div className="h-[calc(100vh-8rem)] overflow-y-auto space-y-6 p-4 relative">
       {activeComponent === "bayLines" && (
         <DiagnosisSearchBar
           areaQuery={areaInput}
@@ -252,10 +250,6 @@ export default function DiagnosisPage() {
                   {severityTone[data.live_status]?.label ?? "Normal"}
                 </Badge>
                 <Badge variant="outline">Health {Math.round(data.health_index)}%</Badge>
-                <Button variant="outline" size="sm" onClick={handleManualRefresh} disabled={isLoading}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Refresh
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -284,7 +278,6 @@ export default function DiagnosisPage() {
                   <p className="text-3xl font-bold text-slate-900">
                     {Math.round((data.fault_probability ?? 0) * 100)}%
                   </p>
-                  <p className="text-xs text-slate-500">{data.explanation}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-wide text-slate-500">Predicted Fault</p>
@@ -296,7 +289,6 @@ export default function DiagnosisPage() {
                   <p className="text-lg font-semibold text-slate-900">
                     {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"}
                   </p>
-                  <p className="text-xs text-slate-500 capitalize">Live source: {data.live_source ?? "synthetic"}</p>
                 </div>
               </div>
 
@@ -346,7 +338,7 @@ export default function DiagnosisPage() {
                 liveTimestamp={data.timestamp}
                 liveSource={data.live_source}
               />
-              <HealthPanel healthIndex={data.health_index} breakdown={data.health_breakdown} />
+              <HealthPanel healthIndex={data.health_index} top3Factors={data.Top3_HealthImpactFactors} />
             </div>
             <MLPanel
               component={activeComponent}
@@ -354,6 +346,10 @@ export default function DiagnosisPage() {
               predictedFault={data.predicted_fault}
               explanation={data.explanation}
               timeline={data.timeline_prediction}
+              lstmScore={data.LSTM_ForecastScore}
+              isolationForestScore={data.IsolationForestScore}
+              xgboostScore={data.XGBoost_FaultScore}
+              liveReadings={data.live_readings}
             />
             <MaintenancePanel
               automaticAlerts={maintenanceSnapshot.automaticAlerts}

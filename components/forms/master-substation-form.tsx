@@ -426,7 +426,7 @@ export function MasterSubstationForm() {
         </div>
 
         <div className="flex justify-end pt-4">
-          <Button type="submit" size="lg" className="bg-blue-600 hover:bg-blue-700 text-white min-w-[150px]">
+          <Button type="submit" size="lg" className="min-w-[150px]">
             Save & Continue
           </Button>
         </div>

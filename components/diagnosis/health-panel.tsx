@@ -8,33 +8,27 @@ import { Progress } from "@/components/ui/progress"
 
 interface HealthPanelProps {
   healthIndex: number
-  breakdown: {
-    mlImpact: number
-    agingFactor: number
-    maintenanceGap: number
-    driftScore: number
-    environmentalStress: number
-  }
+  top3Factors?: string[]
 }
 
-export function HealthPanel({ healthIndex, breakdown }: HealthPanelProps) {
-  const stressors = [
-    { label: "ML Impact", value: breakdown.mlImpact },
-    { label: "Asset Aging", value: breakdown.agingFactor },
-    { label: "Maintenance Gap", value: breakdown.maintenanceGap },
-    { label: "Real-time Drift", value: breakdown.driftScore },
-    { label: "Environmental Stress", value: breakdown.environmentalStress },
-  ]
-
+export function HealthPanel({ healthIndex, top3Factors = [] }: HealthPanelProps) {
   const severity =
     healthIndex < 40 ? "bg-red-100 text-red-700" : healthIndex < 60 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+
+  // Format factor names for display
+  const formatFactorName = (factor: string): string => {
+    return factor
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (str) => str.toUpperCase())
+      .trim()
+  }
 
   return (
     <Card className="shadow-lg">
       <CardHeader className="flex items-center justify-between gap-4">
         <div>
           <CardTitle>Health Index</CardTitle>
-          <p className="text-sm text-slate-500">Blends ML scores, maintenance gaps, drift, and ambient stress.</p>
+          <p className="text-sm text-slate-500">ML-based health assessment with top impact factors.</p>
         </div>
         <Shield className="h-6 w-6 text-blue-600" />
       </CardHeader>
@@ -50,27 +44,34 @@ export function HealthPanel({ healthIndex, breakdown }: HealthPanelProps) {
           <Progress value={healthIndex} className="mt-4 h-2 bg-slate-100" />
         </div>
 
-        <div className="space-y-3">
-          {stressors.map((item) => {
-            const descriptions: Record<string, string> = {
-              "ML Impact": "Machine learning models analyze historical patterns and predict potential issues. Higher values indicate increased risk detected by AI algorithms.",
-              "Asset Aging": "Natural degradation over time based on installation date and operational hours. Older equipment typically shows higher aging factors.",
-              "Maintenance Gap": "Time since last maintenance or deviation from recommended maintenance schedule. Larger gaps increase failure risk.",
-              "Real-time Drift": "Deviation from normal operating parameters detected in live sensor readings. Persistent drift may indicate developing faults.",
-              "Environmental Stress": "External factors like temperature, humidity, and load conditions affecting equipment performance. Extreme conditions accelerate wear.",
-            }
-            return (
-              <div key={item.label} className="rounded-xl border border-slate-100 p-3">
+        {top3Factors.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-slate-700">Top Health Impact Factors</p>
+            {top3Factors.map((factor, index) => (
+              <div key={factor} className="rounded-xl border border-slate-100 p-3">
                 <div className="flex items-center justify-between text-sm font-medium text-slate-700">
-                  <span>{item.label}</span>
-                  <span>{item.value}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                      {index + 1}
+                    </span>
+                    <span>{formatFactorName(factor)}</span>
+                  </div>
                 </div>
-                <Progress value={Math.min(100, item.value)} className="mt-2 h-1.5" />
-                <p className="mt-2 text-xs text-slate-500">{descriptions[item.label] || ""}</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  {index === 0
+                    ? "Primary factor affecting equipment health. Monitor closely for changes."
+                    : index === 1
+                      ? "Secondary contributing factor. Track trends over time."
+                      : "Tertiary factor. Consider in overall assessment."}
+                </p>
               </div>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-100 p-4 text-center text-sm text-slate-500">
+            <p>Impact factors analysis pending...</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

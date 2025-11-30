@@ -5,6 +5,7 @@ import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { applyGlow, removeGlow, getGlowColor } from "@/lib/live-trend/glow-utils"
+import { applyTimelineColorTransition } from "@/lib/live-trend/parameter-color-mapping"
 import { Button } from "@/components/ui/button"
 import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
 import { createFallbackModel } from "@/components/simulation/fallback-models"
@@ -34,6 +35,12 @@ interface ModelViewerProps {
     aging: number
   } | null
   hudVisible?: boolean
+  // Parameter-based color system
+  parameterColor?: string | null
+  showParameterColor?: boolean
+  // Timeline-based color transitions
+  timelineSnapshot?: any
+  simulationProgress?: number
 }
 
 type ViewPreset = "iso" | "top" | "side" | "front" | "back"
@@ -49,6 +56,10 @@ export function ModelViewer({
   onCanvasReady,
   hudMetrics,
   hudVisible = true,
+  parameterColor = null,
+  showParameterColor = false,
+  timelineSnapshot = null,
+  simulationProgress = 0,
 }: ModelViewerProps) {
   const canUseFallback = (type: ViewerComponentType | undefined): type is ViewerComponentType => Boolean(type)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -64,6 +75,7 @@ export function ModelViewer({
   const hudCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const hudTextureRef = useRef<THREE.CanvasTexture | null>(null)
   const hudMeshRef = useRef<THREE.Mesh | null>(null)
+  const hudAnchorRef = useRef<THREE.Object3D | null>(null)
 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -122,6 +134,14 @@ export function ModelViewer({
     }
   }
 
+  const updateHudAnchorOffset = () => {
+    if (!hudAnchorRef.current) return
+    const depth = -Math.max(4.5, cameraDistanceRef.current * 0.7)
+    const horizontalOffset = Math.max(2.4, Math.min(4.2, cameraDistanceRef.current * 0.38))
+    const verticalOffset = -Math.max(1.6, Math.min(2.6, cameraDistanceRef.current * 0.25))
+    hudAnchorRef.current.position.set(horizontalOffset, verticalOffset, depth)
+  }
+
   const positionCameraToModel = (model: THREE.Object3D) => {
     if (!cameraRef.current || !controlsRef.current) return
     const box = new THREE.Box3().setFromObject(model)
@@ -139,24 +159,16 @@ export function ModelViewer({
     controlsRef.current.update()
     cameraTargetRef.current = center.clone()
     cameraDistanceRef.current = distance
-
-    // Place HUD panel relative to model bounds if it exists
-    if (hudMeshRef.current) {
-      hudMeshRef.current.position.set(
-        center.x + size.x * 0.9,
-        center.y + size.y * 0.6,
-        center.z,
-      )
-      hudMeshRef.current.lookAt(cameraRef.current.position)
-    }
+    updateHudAnchorOffset()
   }
 
   const ensureHudPanel = () => {
     if (!sceneRef.current || hudMeshRef.current) return
 
+    // Create larger, higher resolution canvas for better visibility in playback video
     const canvas = document.createElement("canvas")
-    canvas.width = 512
-    canvas.height = 256
+    canvas.width = 1536 // Increased width for larger text
+    canvas.height = 768 // Increased height for larger text
     const texture = new THREE.CanvasTexture(canvas)
     // Use default color space; explicit sRGBEncoding is not available in current three version
     texture.needsUpdate = true
@@ -164,13 +176,25 @@ export function ModelViewer({
     const material = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
+      alphaTest: 0.1,
+      depthTest: false, // Always render on top
+      depthWrite: false,
     })
-    const geometry = new THREE.PlaneGeometry(3, 1.5)
+    
+    // Larger geometry for better visibility
+    const geometry = new THREE.PlaneGeometry(6.5, 3.2) // Increased size for larger text
     const mesh = new THREE.Mesh(geometry, material)
-    mesh.position.set(4, 3, 0)
-    mesh.renderOrder = 10
+    
+    // Attach to camera anchor so it stays in bottom-right corner of frame
+    mesh.position.set(0, 0, 0)
+    mesh.renderOrder = 1000 // Higher render order to ensure visibility
 
-    sceneRef.current.add(mesh)
+    if (hudAnchorRef.current) {
+      hudAnchorRef.current.add(mesh)
+    } else {
+      sceneRef.current.add(mesh)
+    }
+
     hudCanvasRef.current = canvas
     hudTextureRef.current = texture
     hudMeshRef.current = mesh
@@ -184,13 +208,21 @@ export function ModelViewer({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Panel background
-    ctx.fillStyle = "rgba(0,0,0,0.8)"
-    const radius = 24
-    const w = canvas.width - 40
-    const h = canvas.height - 40
-    const x = 20
-    const y = 20
+    // Enhanced panel background with border and shadow
+    const radius = 32
+    const w = canvas.width - 60
+    const h = canvas.height - 60
+    const x = 30
+    const y = 30
+
+    // Drop shadow
+    ctx.shadowColor = "rgba(0, 0, 0, 0.5)"
+    ctx.shadowBlur = 20
+    ctx.shadowOffsetX = 4
+    ctx.shadowOffsetY = 4
+
+    // Background
+    ctx.fillStyle = "rgba(0, 0, 0, 0.9)" // More opaque
     ctx.beginPath()
     ctx.moveTo(x + radius, y)
     ctx.lineTo(x + w - radius, y)
@@ -204,28 +236,89 @@ export function ModelViewer({
     ctx.closePath()
     ctx.fill()
 
-    ctx.font = "24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-    ctx.fillStyle = "#e5e7eb"
-    ctx.textBaseline = "top"
+    // Reset shadow
+    ctx.shadowColor = "transparent"
+    ctx.shadowBlur = 0
+    ctx.shadowOffsetX = 0
+    ctx.shadowOffsetY = 0
 
+    // Border
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    // Title - increased size for better visibility in playback video
+    ctx.font = "bold 56px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    ctx.fillStyle = "#ffffff"
+    ctx.textBaseline = "top"
+    ctx.fillText("Parameters", x + 40, y + 30)
+
+    // Parameter rows with color coding (True Health, Stress, Fault, Aging)
     const rows = [
-      ["Health", `${hudMetrics.overall.toFixed(1)}%`],
-      ["Fault Prob.", `${hudMetrics.fault.toFixed(1)}%`],
-      ["Stress", `${hudMetrics.stress.toFixed(1)}%`],
-      ["Aging", `${hudMetrics.aging.toFixed(1)}%`],
+      ["True Health", `${hudMetrics.overall.toFixed(1)}%`, getParameterDisplayColor(hudMetrics.overall, "trueHealth")],
+      ["Stress Score", `${hudMetrics.stress.toFixed(1)}%`, getParameterDisplayColor(hudMetrics.stress, "stressScore")],
+      ["Fault Probability", `${hudMetrics.fault.toFixed(1)}%`, getParameterDisplayColor(hudMetrics.fault, "faultProbability")],
+      ["Aging Factor", `${hudMetrics.aging.toFixed(1)}%`, getParameterDisplayColor(hudMetrics.aging, "agingFactor")],
     ] as const
 
-    const startX = x + 24
-    let rowY = y + 24
-    rows.forEach(([label, value]) => {
-      ctx.fillStyle = "#9ca3af"
+    // Increased font size for better visibility in playback video
+    ctx.font = "bold 48px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+    const startX = x + 40
+    let rowY = y + 120
+
+    rows.forEach(([label, value, color]) => {
+      // Label
+      ctx.fillStyle = "#d1d5db"
       ctx.fillText(label, startX, rowY)
-      ctx.fillStyle = "#f9fafb"
-      ctx.fillText(value, startX + 220, rowY)
-      rowY += 42
+      
+      // Value with color coding
+      ctx.fillStyle = color
+      ctx.fillText(value, startX + 400, rowY)
+      
+      // Color indicator dot - increased size
+      ctx.beginPath()
+      ctx.arc(startX + 680, rowY + 24, 18, 0, 2 * Math.PI)
+      ctx.fillStyle = color
+      ctx.fill()
+      ctx.strokeStyle = "#ffffff"
+      ctx.lineWidth = 3
+      ctx.stroke()
+      
+      rowY += 80 // Increased spacing between rows
     })
 
     hudTextureRef.current.needsUpdate = true
+  }
+
+  // Helper function to get display color for parameters
+  const getParameterDisplayColor = (value: number, parameter: string): string => {
+    switch (parameter) {
+      case "trueHealth":
+        if (value >= 80) return "#10b981" // Green
+        if (value >= 60) return "#f59e0b" // Yellow
+        if (value >= 40) return "#f97316" // Orange
+        return "#ef4444" // Red
+      case "stressScore":
+        if (value <= 20) return "#3b82f6" // Blue
+        if (value <= 40) return "#06b6d4" // Cyan
+        if (value <= 60) return "#f59e0b" // Yellow
+        if (value <= 80) return "#f97316" // Orange
+        return "#ef4444" // Red
+      case "faultProbability":
+        if (value <= 15) return "#10b981" // Green
+        if (value <= 35) return "#84cc16" // Light Green
+        if (value <= 55) return "#f59e0b" // Yellow
+        if (value <= 75) return "#f97316" // Orange
+        return "#ef4444" // Red
+      case "agingFactor":
+        if (value >= 80) return "#f8fafc" // White
+        if (value >= 60) return "#cbd5e1" // Light Gray
+        if (value >= 40) return "#94a3b8" // Gray
+        if (value >= 20) return "#64748b" // Dark Gray
+        return "#374151" // Very Dark Gray
+      default:
+        return "#ffffff"
+    }
   }
 
   // Initialize scene
@@ -238,18 +331,25 @@ export function ModelViewer({
 
     // Scene
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x1a1a1a)
+    scene.background = new THREE.Color(0x0f0f0f)
     sceneRef.current = scene
 
     // Camera - will be adjusted when model loads
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000)
+    const camera = new THREE.PerspectiveCamera(65, width / height, 0.1, 1000)
     camera.position.set(6, 4, 6)
     camera.lookAt(0, 0, 0)
     cameraRef.current = camera
+    scene.add(camera)
+
+    const hudAnchor = new THREE.Object3D()
+    hudAnchor.position.set(2.8, -2.0, -4.8)
+    camera.add(hudAnchor)
+    hudAnchorRef.current = hudAnchor
 
     // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
     renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2.5))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.domElement.style.touchAction = "none"
@@ -281,7 +381,7 @@ export function ModelViewer({
     controls.minPolarAngle = 0
     controls.maxPolarAngle = Math.PI
     controls.autoRotate = autoRotateRef.current
-    controls.autoRotateSpeed = autoRotateRef.current ? 0.5 : 0
+    controls.autoRotateSpeed = autoRotateRef.current ? 0.35 : 0
     controlsRef.current = controls
     const handleControlChange = () => syncCameraDistance()
     const handleControlStart = () => {
@@ -295,17 +395,22 @@ export function ModelViewer({
     controls.addEventListener("end", handleControlEnd)
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75)
     scene.add(ambientLight)
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    directionalLight.position.set(10, 10, 5)
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1)
+    directionalLight.position.set(8, 12, 6)
     directionalLight.castShadow = true
     scene.add(directionalLight)
+
+    const rimLight = new THREE.DirectionalLight(0x66ccff, 0.5)
+    rimLight.position.set(-6, 4, -6)
+    scene.add(rimLight)
 
     // Animation loop
     const animate = () => {
       requestAnimationFrame(animate)
+      updateHudAnchorOffset()
       controls.update()
       renderer.render(scene, camera)
     }
@@ -339,6 +444,10 @@ export function ModelViewer({
       controls.removeEventListener("start", handleControlStart)
       controls.removeEventListener("end", handleControlEnd)
       controls.dispose()
+      if (hudAnchorRef.current && cameraRef.current) {
+        cameraRef.current.remove(hudAnchorRef.current)
+      }
+      hudAnchorRef.current = null
     }
   }, [])
 
@@ -506,6 +615,82 @@ export function ModelViewer({
       }
     }
   }, [glowData, showGlow])
+
+  // Apply parameter-based color effects
+  useEffect(() => {
+    if (!modelRef.current || !sceneRef.current) {
+      return
+    }
+
+    // Apply parameter color if enabled
+    if (showParameterColor && parameterColor && modelRef.current) {
+      modelRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material
+          if (material instanceof THREE.MeshStandardMaterial) {
+            // Store original color if not already stored
+            if (!child.userData.originalColor) {
+              child.userData.originalColor = material.color.clone()
+            }
+            
+            // Apply parameter color
+            const targetColor = new THREE.Color(parameterColor)
+            material.color.copy(targetColor)
+            material.emissive.copy(targetColor).multiplyScalar(0.3)
+            material.emissiveIntensity = 1.1
+            material.needsUpdate = true
+          }
+        }
+      })
+    } else if (modelRef.current) {
+      // Reset to original colors when parameter color is disabled
+      modelRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData.originalColor) {
+          const material = child.material
+          if (material instanceof THREE.MeshStandardMaterial) {
+            material.color.copy(child.userData.originalColor)
+            material.emissive.set(0x000000)
+            material.emissiveIntensity = 0
+            material.needsUpdate = true
+          }
+        }
+      })
+    }
+  }, [parameterColor, showParameterColor])
+
+  // Apply timeline-based color transitions for simulation
+  useEffect(() => {
+    if (!modelRef.current || !sceneRef.current) {
+      return
+    }
+
+    // Apply timeline color transition if we have timeline data and are in playback mode
+    if (timelineSnapshot && (simulationProgress > 0 || showParameterColor)) {
+      console.log("[ColorTransition] Applying color transition:", {
+        simulationProgress,
+        trueHealth: timelineSnapshot.trueHealth,
+        stressScore: timelineSnapshot.stressScore,
+        faultProbability: timelineSnapshot.faultProbability,
+        agingFactor: timelineSnapshot.agingFactor
+      })
+      
+      applyTimelineColorTransition(modelRef.current, timelineSnapshot, Math.max(0.1, simulationProgress))
+    } else if (modelRef.current && simulationProgress === 0 && !showParameterColor) {
+      // Reset to original colors when simulation is not active
+      modelRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData.originalColor) {
+          const material = child.material
+          if (material instanceof THREE.MeshStandardMaterial) {
+            material.color.copy(child.userData.originalColor)
+            material.emissive.set(0x000000)
+            material.emissiveIntensity = 0
+            material.needsUpdate = true
+            delete child.userData.currentTransitionColor
+          }
+        }
+      })
+    }
+  }, [timelineSnapshot, simulationProgress, showParameterColor])
 
   // Update HUD panel visibility and texture when metrics change
   useEffect(() => {

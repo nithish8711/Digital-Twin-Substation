@@ -27,7 +27,17 @@ const isDiagnosisComponent = (value: string): value is DiagnosisComponentKey =>
   ].includes(value as DiagnosisComponentKey)
 
 export async function POST(request: Request) {
-  const body = await request.json()
+  let body: any = {}
+  try {
+    const text = await request.text()
+    if (text) {
+      body = JSON.parse(text)
+    }
+  } catch (error) {
+    console.error("Failed to parse request body", error)
+    return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 })
+  }
+  
   const areaCode = body.areaCode?.trim()
   const substationId = body.substationId?.trim() || areaCode
   const componentType = body.componentType?.trim()
@@ -75,9 +85,29 @@ export async function POST(request: Request) {
         "normal"
       ) ?? "normal"
 
-    const { score, breakdown } = deriveHealthMetrics({
-      pythonHealth: prediction.health_index ?? 70,
-      faultProbability: prediction.fault_probability ?? 0.3,
+    // Adjust values as per requirements:
+    // - Reduce Combined Fault Probability, Failure Predictor (XGBoost), and Fault Probability by 28 percentage points
+    // - Increase Health Index by 28 points
+    
+    // Get raw values from prediction
+    const rawFaultProbability = prediction.fault_probability ?? 0.3
+    const rawXGBoostScore = prediction.XGBoost_FaultScore ?? 0
+    const rawHealthIndex = prediction.health_index ?? 70
+    
+    // Adjust fault probabilities: reduce by 28 percentage points (0.28)
+    const adjustedFaultProbability = Math.max(0, Math.min(1, rawFaultProbability - 0.28))
+    const adjustedXGBoostScore = Math.max(0, Math.min(1, rawXGBoostScore - 0.28))
+    
+    // Adjust health index: increase by 28 points (clamped to 0-100)
+    const adjustedHealthIndex = Math.max(0, Math.min(100, rawHealthIndex + 28))
+    
+    // Use adjusted health_index
+    const healthIndex = adjustedHealthIndex
+    
+    // Still calculate breakdown for backward compatibility, but use adjusted backend health_index as primary
+    const { score: _, breakdown } = deriveHealthMetrics({
+      pythonHealth: healthIndex,
+      faultProbability: adjustedFaultProbability,
       installationYear: assetMetadata?.master?.installationYear,
       maintenanceCount: (assetMetadata?.maintenanceHistory ?? []).length,
       parameterStates,
@@ -88,26 +118,26 @@ export async function POST(request: Request) {
       component,
       assetMetadata,
       parameterStates,
-      faultProbability: prediction.fault_probability ?? 0,
-      healthScore: score,
+      faultProbability: adjustedFaultProbability,
+      healthScore: healthIndex,
     })
 
     const events = buildEventLog({
       component: definition.title,
-      faultProbability: prediction.fault_probability ?? 0,
+      faultProbability: adjustedFaultProbability,
       predictedFault: prediction.predicted_fault ?? "Normal",
       parameterStates,
     })
 
-    // Fire-and-forget alert push
+    // Fire-and-forget alert push (use adjusted values)
     dispatchMaintenanceAlert({
       substationId,
       areaCode,
       componentType: component,
       fault: prediction.predicted_fault ?? "Normal",
       severity: liveSeverity,
-      faultProbability: prediction.fault_probability ?? 0,
-      healthIndex: score,
+      faultProbability: adjustedFaultProbability,
+      healthIndex: healthIndex,
     }).catch((error) => {
       console.warn("Unable to push maintenance alert", error)
     })
@@ -116,8 +146,8 @@ export async function POST(request: Request) {
       component,
       areaCode,
       substationId,
-      fault_probability: prediction.fault_probability,
-      health_index: score,
+      fault_probability: adjustedFaultProbability,
+      health_index: healthIndex,
       predicted_fault: prediction.predicted_fault,
       affected_subpart: prediction.affected_subpart,
       explanation: prediction.explanation,
@@ -132,6 +162,11 @@ export async function POST(request: Request) {
       events,
       trend_history: liveSnapshot.history,
       live_source: liveSnapshot.source,
+      // Pass ML model scores from backend prediction (with adjusted XGBoost score)
+      LSTM_ForecastScore: prediction.LSTM_ForecastScore,
+      IsolationForestScore: prediction.IsolationForestScore,
+      XGBoost_FaultScore: adjustedXGBoostScore,
+      Top3_HealthImpactFactors: prediction.Top3_HealthImpactFactors,
     })
   } catch (error) {
     console.error("Diagnosis API failure", error)

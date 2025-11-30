@@ -1,16 +1,8 @@
 "use client"
 
-import { useMemo } from "react"
-
-import { COMPONENT_DEFINITIONS, PRIMARY_COMPONENTS, SECONDARY_COMPONENTS } from "@/lib/diagnosis/component-config"
+import { COMPONENT_DEFINITIONS, PRIMARY_COMPONENTS } from "@/lib/diagnosis/component-config"
 import type { DiagnosisComponentKey } from "@/lib/diagnosis/types"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 interface ComponentTabsProps {
@@ -32,11 +24,6 @@ const primaryButtonPalette: Record<DiagnosisComponentKey, string> = {
 }
 
 export function DiagnosisComponentTabs({ active, onChange }: ComponentTabsProps) {
-  const activeSecondary = useMemo(
-    () => (SECONDARY_COMPONENTS.includes(active) ? COMPONENT_DEFINITIONS[active] : null),
-    [active],
-  )
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3 items-center justify-between">
@@ -60,41 +47,8 @@ export function DiagnosisComponentTabs({ active, onChange }: ComponentTabsProps)
             )
           })}
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                "border-dashed font-semibold",
-                activeSecondary ? "text-blue-700 border-blue-200" : "text-slate-600",
-              )}
-            >
-              {activeSecondary ? `Others • ${activeSecondary.title}` : "Others"}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            {SECONDARY_COMPONENTS.map((component) => {
-              const definition = COMPONENT_DEFINITIONS[component]
-              return (
-                <DropdownMenuItem
-                  key={component}
-                  onClick={() => onChange(component)}
-                  className={cn(
-                    "flex flex-col items-start space-y-0.5",
-                    active === component && "bg-blue-50 text-blue-700",
-                  )}
-                >
-                  <span className="text-sm font-semibold">{definition.title}</span>
-                  <span className="text-xs text-slate-500">{definition.description}</span>
-                </DropdownMenuItem>
-              )
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
-      <p className="text-xs text-slate-500">
-        Primary equipment mirrors the Live Trend navigation. Secondary systems are grouped under “Others”.
-      </p>
+      <p className="text-xs text-slate-500">Select equipment to review live diagnostics and health analytics.</p>
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process"
 import path from "node:path"
 
 import type { DiagnosisComponentKey } from "@/lib/diagnosis/types"
+import { transformToMLInput } from "./data-transformer"
 
 const FAULT_LIBRARY: Record<DiagnosisComponentKey, Array<{ fault: string; subpart?: string }>> = {
   bayLines: [
@@ -47,12 +48,20 @@ const FAULT_LIBRARY: Record<DiagnosisComponentKey, Array<{ fault: string; subpar
   ],
 }
 
-const runCommand = (args: string[]) =>
+const runCommand = (args: string[], stdinData?: string) =>
   new Promise<string>((resolve, reject) => {
     const cmd = process.env.PYTHON_PATH || "python"
-    const subprocess = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] })
+    const subprocess = spawn(cmd, args, { 
+      stdio: stdinData ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"] 
+    })
     let stdout = ""
     let stderr = ""
+
+    // Write stdin data if provided
+    if (stdinData && subprocess.stdin) {
+      subprocess.stdin.write(stdinData)
+      subprocess.stdin.end()
+    }
 
     subprocess.stdout.on("data", (chunk) => {
       stdout += chunk.toString()
@@ -63,7 +72,22 @@ const runCommand = (args: string[]) =>
     subprocess.on("error", (error) => reject(error))
     subprocess.on("close", (code) => {
       if (code === 0) {
-        resolve(stdout.trim())
+        // Extract JSON from stdout - TensorFlow might print progress info before/after JSON
+        const trimmed = stdout.trim()
+        
+        // Try to find JSON object in the output (in case TensorFlow printed something)
+        // Look for the first { and last } to extract JSON
+        const firstBrace = trimmed.indexOf('{')
+        const lastBrace = trimmed.lastIndexOf('}')
+        
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          // Extract JSON portion
+          const jsonStr = trimmed.substring(firstBrace, lastBrace + 1)
+          resolve(jsonStr)
+        } else {
+          // No braces found, return as-is (shouldn't happen but handle gracefully)
+          resolve(trimmed)
+        }
       } else {
         const error = new Error(stderr || `Python exited with code ${code}`)
         reject(error)
@@ -114,13 +138,21 @@ export async function invokePredictor(opts: {
 }) {
   const { component, areaCode, substationId, liveReadings, assetMetadata } = opts
   const scriptPath = path.join(process.cwd(), "backend", "ml", "run_predictor.py")
-  const args = [scriptPath, "--component", component, "--area", areaCode]
-  if (substationId) {
-    args.push("--substation", substationId)
-  }
+  
+  // Transform data to ML input format
+  const mlInput = transformToMLInput(
+    component,
+    assetMetadata,
+    liveReadings,
+    areaCode,
+    substationId || areaCode
+  )
+  
+  const args = [scriptPath, "--component", component, "--stdin"]
+  const stdinData = JSON.stringify(mlInput)
 
   try {
-    const output = await runCommand(args)
+    const output = await runCommand(args, stdinData)
     const parsed = JSON.parse(output)
     return parsed
   } catch (error) {

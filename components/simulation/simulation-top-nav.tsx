@@ -18,9 +18,9 @@ export function SimulationTopNav() {
   }, [searchParams])
   
   const navButtons = [
-    { id: "run", label: "Run Simulation", color: "bg-purple-600 hover:bg-purple-700" },
-    { id: "analysis", label: "Analysis", color: "bg-blue-600 hover:bg-blue-700" },
-    { id: "solution", label: "Solution", color: "bg-green-600 hover:bg-green-700" },
+    { id: "run", label: "Run Simulation" },
+    { id: "analysis", label: "Analysis" },
+    { id: "solution", label: "Solution" },
   ]
 
   const handleTabClick = (tabId: string) => {
@@ -36,8 +36,8 @@ export function SimulationTopNav() {
     <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
       <div className="flex h-16 items-center px-4 gap-4">
         <div className="mr-4 hidden md:flex">
-          <span className="hidden font-bold sm:inline-block text-xl tracking-tight">
-            OCEANBERG <span className="text-blue-600">DIGITAL TWIN</span>
+          <span className="hidden font-bold sm:inline-block text-xl tracking-tight text-black">
+            OCEANBERG <span className="text-black">DIGITAL TWIN</span>
           </span>
         </div>
 
@@ -47,7 +47,7 @@ export function SimulationTopNav() {
               <Button
                 key={button.id}
                 variant="default"
-                className={`${button.color} text-white shadow-md transition-all ${
+                className={`shadow-md transition-all ${
                   activeTab === button.id ? "ring-2 ring-offset-2 ring-white" : ""
                 }`}
                 onClick={() => handleTabClick(button.id)}
