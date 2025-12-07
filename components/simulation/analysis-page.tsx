@@ -464,10 +464,19 @@ const useVideoControls = () => {
       const safeTime = Math.min(video.currentTime || 0, MAX_RUNTIME_SECONDS)
       if (safeTime >= MAX_RUNTIME_SECONDS) {
         video.pause()
-        video.currentTime = MAX_RUNTIME_SECONDS
+        video.currentTime = 0 // Reset to beginning instead of staying at end
         setIsPlaying(false)
+        setCurrentTime(0)
+      } else {
+        setCurrentTime(safeTime)
       }
-      setCurrentTime(safeTime)
+    }
+    
+    const handleEnded = () => {
+      // Reset video to beginning when it ends
+      video.currentTime = 0
+      setIsPlaying(false)
+      setCurrentTime(0)
     }
     
     const handleCanPlay = () => {
@@ -489,6 +498,7 @@ const useVideoControls = () => {
     video.addEventListener("timeupdate", handleTime)
     video.addEventListener("canplay", handleCanPlay)
     video.addEventListener("loadstart", handleLoadStart)
+    video.addEventListener("ended", handleEnded)
     
     // Initial check if video is already loaded
     if (video.readyState >= 1) {
@@ -500,6 +510,7 @@ const useVideoControls = () => {
       video.removeEventListener("timeupdate", handleTime)
       video.removeEventListener("canplay", handleCanPlay)
       video.removeEventListener("loadstart", handleLoadStart)
+      video.removeEventListener("ended", handleEnded)
     }
   }, [duration])
 
@@ -510,6 +521,11 @@ const useVideoControls = () => {
       video.pause()
       setIsPlaying(false)
       return
+    }
+    // If video is at the end, reset to beginning before playing
+    if (video.currentTime >= MAX_RUNTIME_SECONDS) {
+      video.currentTime = 0
+      setCurrentTime(0)
     }
     video.play()
     setIsPlaying(true)
@@ -1226,6 +1242,8 @@ export function SimulationDetail({
         if (next >= SIMULATION_DURATION) {
           window.clearInterval(interval)
           setIsModelPlaying(false)
+          // Reset to beginning after completion
+          setTimeout(() => setSyntheticTime(0), 100)
           return SIMULATION_DURATION
         }
         return next
@@ -1518,6 +1536,10 @@ useEffect(() => {
   const isPlaybackActive = shouldUseModelViewer ? isModelPlaying : videoControls.isPlaying
   const handlePlaybackToggle = () => {
     if (shouldUseModelViewer) {
+      // If at the end, reset to beginning before playing
+      if (syntheticTime >= SIMULATION_DURATION) {
+        setSyntheticTime(0)
+      }
       setIsModelPlaying((prev) => !prev)
       return
     }
@@ -1690,9 +1712,16 @@ useEffect(() => {
               {shouldUseModelViewer ? (
                 <ModelViewer
                   key={`model-${simulation.id}`}
-                  modelPath={simulation.assetMetadata?.model ?? null}
+                  modelPath={
+                    simulation.assetMetadata?.model ??
+                    (simulation.componentType === "transformer"
+                      ? "/model/transformer_model.glb"
+                      : simulation.componentType === "circuitBreaker"
+                      ? "/model/circuitbreaker_model.glb"
+                      : null)
+                  }
                   componentType={simulation.componentType}
-                  useFallback
+                  useFallback={false}
                   autoRotate
                   className="h-full"
                   hudMetrics={modelViewerHudMetrics}

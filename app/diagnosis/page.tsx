@@ -26,6 +26,14 @@ const severityTone: Record<string, { label: string; className: string }> = {
   trip: { label: "Trip", className: "bg-red-100 text-red-700" },
 }
 
+// Client-side cache for diagnosis data to speed up component switching
+const diagnosisCache = new Map<string, { data: DiagnosisApiResponse; timestamp: number }>()
+const CACHE_TTL = 60000 // 60 seconds cache TTL
+
+function getCacheKey(areaCode: string, substationId: string, component: string): string {
+  return `${areaCode}-${substationId}-${component}`
+}
+
 export default function DiagnosisPage() {
   const { activeComponent } = useDiagnosisNav()
   const [areaInput, setAreaInput] = useState("")
@@ -44,9 +52,71 @@ export default function DiagnosisPage() {
     let isCancelled = false
     const controller = new AbortController()
 
+    // Check cache first for instant display when switching components
+    const cacheKey = getCacheKey(query.areaCode, query.substationId, activeComponent)
+    const cached = diagnosisCache.get(cacheKey)
+    
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      // Show cached data immediately - no loading needed
+      setData(cached.data)
+      setLastUpdated(new Date(cached.data.timestamp || Date.now()).toISOString())
+      setIsLoading(false)
+      
+      // Still refresh in background, but don't show loading
+      const fetchData = async () => {
+        try {
+          const response = await fetch("/api/diagnosis/component", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              areaCode: query.areaCode,
+              substationId: query.substationId,
+              componentType: activeComponent,
+            }),
+            signal: controller.signal,
+          })
+
+          if (!response.ok) {
+            return // Silently fail if we have cached data
+          }
+
+          const payload: DiagnosisApiResponse = await response.json()
+          if (!isCancelled) {
+            setData(payload)
+            setLastUpdated(new Date().toISOString())
+            
+            // Update cache
+            diagnosisCache.set(cacheKey, {
+              data: payload,
+              timestamp: Date.now(),
+            })
+          }
+        } catch (err) {
+          // Silently fail - we have cached data to show
+          console.debug("Background refresh failed:", err)
+        }
+      }
+      
+      // Refresh in background after a short delay
+      const timeout = setTimeout(() => fetchData(), 1000)
+      
+      // Subsequent fetches without loading indicator (background refresh)
+      const interval = setInterval(() => fetchData(), 5000)
+
+      return () => {
+        isCancelled = true
+        controller.abort()
+        clearTimeout(timeout)
+        clearInterval(interval)
+      }
+    } else if (cached) {
+      // Cache expired, but show stale data while fetching
+      setData(cached.data)
+    }
+
     const fetchData = async (isInitial: boolean) => {
       setError(null)
-      if (isInitial) {
+      if (isInitial && !cached) {
         setIsLoading(true)
       }
       try {
@@ -70,19 +140,40 @@ export default function DiagnosisPage() {
           setData(payload)
           setLastUpdated(new Date().toISOString())
           setIsLoading(false)
+          
+          // Update cache
+          diagnosisCache.set(cacheKey, {
+            data: payload,
+            timestamp: Date.now(),
+          })
+          
+          // Clean up old cache entries (keep only last 20)
+          if (diagnosisCache.size > 20) {
+            const entries = Array.from(diagnosisCache.entries())
+            entries.sort((a, b) => b[1].timestamp - a[1].timestamp)
+            for (let i = 20; i < entries.length; i++) {
+              diagnosisCache.delete(entries[i][0])
+            }
+          }
         }
       } catch (err) {
         if (!isCancelled) {
           console.error(err)
-          setError("Unable to fetch diagnosis data. Check Firebase/ML backend.")
+          // Only show error if we don't have cached data to fall back to
+          if (!cached) {
+            setError("Unable to fetch diagnosis data. Check Firebase/ML backend.")
+          }
           setIsLoading(false)
         }
       }
     }
 
-    fetchData(true) // Initial fetch with loading
+    // Fetch fresh data if no cache or cache expired
+    fetchData(!cached) // Initial fetch with loading only if no cache
     isInitialFetch.current = false
-    const interval = setInterval(() => fetchData(false), 5000) // Subsequent fetches without loading
+    
+    // Subsequent fetches without loading indicator (background refresh)
+    const interval = setInterval(() => fetchData(false), 5000)
 
     return () => {
       isCancelled = true
@@ -114,6 +205,59 @@ export default function DiagnosisPage() {
       ignore = true
     }
   }, [query?.areaCode])
+
+  // Preload diagnosis data for all components when area is selected (background fetch)
+  useEffect(() => {
+    const areaCode = query?.areaCode
+    const substationId = query?.substationId
+    if (!areaCode || !substationId) return
+
+    // Preload diagnosis data for all components in the background
+    // This ensures data is cached when user switches components
+    const components: Array<"bayLines" | "transformer" | "circuitBreaker" | "busbar" | "isolator"> = [
+      "bayLines",
+      "transformer",
+      "circuitBreaker",
+      "busbar",
+      "isolator",
+    ]
+
+    // Preload all components in parallel (background, no loading indicators)
+    components.forEach((component) => {
+      const cacheKey = getCacheKey(areaCode, substationId, component)
+      const cached = diagnosisCache.get(cacheKey)
+      
+      // Only preload if not already cached or cache is expired
+      if (!cached || Date.now() - cached.timestamp >= CACHE_TTL) {
+        fetch("/api/diagnosis/component", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            areaCode,
+            substationId,
+            componentType: component,
+          }),
+        })
+          .then((res) => {
+            if (!res.ok) return null
+            return res.json()
+          })
+          .then((payload: DiagnosisApiResponse | null) => {
+            if (payload) {
+              // Update cache
+              diagnosisCache.set(cacheKey, {
+                data: payload,
+                timestamp: Date.now(),
+              })
+            }
+          })
+          .catch((err) => {
+            // Silently fail - this is just preloading
+            console.debug(`Preload failed for ${component}:`, err)
+          })
+      }
+    })
+  }, [query?.areaCode, query?.substationId])
 
   const handleSearch = (areaValue: string) => {
     const trimmed = areaValue.trim()

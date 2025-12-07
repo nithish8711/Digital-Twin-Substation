@@ -3,10 +3,12 @@
 import { createContext, useContext, useState, ReactNode } from "react"
 
 interface SelectedAreaContext {
-  key: string
+  key: string // Transformed key for realtime DB paths
   label: string
+  areaCode: string // Actual area code for Firebase API calls (substationCode or areaName)
   metadata?: {
     areaName?: string
+    substationCode?: string
     installationYear?: number
     latitude?: number
     longitude?: number

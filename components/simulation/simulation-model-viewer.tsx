@@ -23,9 +23,9 @@ export type SimulationModelViewerHandle = {
 }
 
 const MODEL_PATHS: Partial<Record<ComponentType, string>> = {
-  transformer: "/models/transformer/transformer.glb",
+  transformer: "/model/transformer_model.glb",
   bayLines: "/models/bay-lines/bay-lines.glb",
-  circuitBreaker: "/models/circuit-breaker/circuit-breaker.glb",
+  circuitBreaker: "/model/circuitbreaker_model.glb",
   isolator: "/models/isolator/isolator.glb",
   busbar: "/models/busbar/busbar.glb",
 }
@@ -261,26 +261,22 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
       const inputs = activeInputs as Record<string, number | string>
 
       if (selectedComponent === "transformer") {
-        if (typeof inputs.oilLevel === "number" && inputs.oilLevel < 70) {
+        // Map to transformer-specific parameter names for glow effects
+        // These will be mapped to the correct part names in the model viewer
+        if (typeof inputs.oilLevel === "number") {
           glow.oilLevel = inputs.oilLevel
         }
-        if (
-          typeof inputs.oilTemperature === "number" &&
-          inputs.oilTemperature > 70
-        ) {
-          glow.oilTemperature = inputs.oilTemperature
+        if (typeof inputs.oilTemperature === "number" || typeof inputs.oilTemp === "number") {
+          glow.oilTemp = inputs.oilTemperature ?? inputs.oilTemp
         }
-        if (
-          typeof inputs.windingTemperature === "number" &&
-          inputs.windingTemperature > 85
-        ) {
-          glow.windingTemperature = inputs.windingTemperature
+        if (typeof inputs.windingTemperature === "number" || typeof inputs.windingTemp === "number") {
+          glow.windingTemp = inputs.windingTemperature ?? inputs.windingTemp
         }
-        if (
-          typeof inputs.hydrogenPPM === "number" &&
-          inputs.hydrogenPPM > 150
-        ) {
-          glow.hydrogenPPM = inputs.hydrogenPPM
+        if (typeof inputs.hydrogenPPM === "number" || typeof inputs.gasLevel === "number" || typeof inputs.hydrogen === "number") {
+          glow.gasLevel = inputs.hydrogenPPM ?? inputs.gasLevel ?? inputs.hydrogen
+        }
+        if (typeof inputs.tapPosition === "number" || typeof inputs.tapPos === "number") {
+          glow.tapPos = inputs.tapPosition ?? inputs.tapPos
         }
       } else if (selectedComponent === "bayLines") {
         if (
@@ -296,11 +292,10 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
           glow.frequencyHz = inputs.frequencyHz
         }
       } else if (selectedComponent === "circuitBreaker") {
-        if (
-          typeof inputs.sf6DensityPercent === "number" &&
-          inputs.sf6DensityPercent < 95
-        ) {
-          glow.sf6DensityPercent = inputs.sf6DensityPercent
+        // Map to circuit breaker-specific parameter names for glow effects
+        // These will be mapped to the correct part names in the model viewer
+        if (typeof inputs.sf6Density === "number" || typeof inputs.sf6DensityPercent === "number") {
+          glow.sf6Density = inputs.sf6Density ?? inputs.sf6DensityPercent
         }
       } else if (selectedComponent === "busbar") {
         if (
@@ -324,7 +319,8 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
     }, [selectedComponent, activeInputs])
 
     const modelPath = MODEL_PATHS[selectedComponent as ComponentType] ?? null
-    const [forceFallbackModel, setForceFallbackModel] = useState(!modelPath)
+    // Start with false (try GLB first) - will be set to true only if GLB doesn't exist
+    const [forceFallbackModel, setForceFallbackModel] = useState(false)
 
     useEffect(() => {
       if (typeof window === "undefined") {
@@ -365,10 +361,13 @@ export const SimulationModelViewer = forwardRef<SimulationModelViewerHandle, Sim
       setForceFallbackModel(false)
       timeoutId = window.setTimeout(() => {
         if (!cancelled) {
-          setForceFallbackModel(true)
+          console.warn("Model availability check timed out, will try to load GLB anyway")
+          // Don't force fallback on timeout - let the ModelViewer try to load the GLB
+          // It will fallback automatically if the file doesn't exist
+          setForceFallbackModel(false)
           controller.abort()
         }
-      }, 4000)
+      }, 8000)
       verifyModelAvailability().finally(() => {
         if (timeoutId !== null) {
           window.clearTimeout(timeoutId)

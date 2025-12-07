@@ -6,6 +6,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { applyGlow, removeGlow, getGlowColor } from "@/lib/live-trend/glow-utils"
 import { applyTimelineColorTransition } from "@/lib/live-trend/parameter-color-mapping"
+import { updateTransformerGlow, removeTransformerGlow } from "@/lib/live-trend/transformer-glow-utils"
+import { updateCircuitBreakerGlow, removeCircuitBreakerGlow } from "@/lib/live-trend/circuit-breaker-glow-utils"
 import { Button } from "@/components/ui/button"
 import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
 import { createFallbackModel } from "@/components/simulation/fallback-models"
@@ -81,6 +83,7 @@ export function ModelViewer({
   const [error, setError] = useState<string | null>(null)
   const [hasModel, setHasModel] = useState(Boolean(useFallback))
   const [sceneReady, setSceneReady] = useState(false)
+  const [modelLoadAttempted, setModelLoadAttempted] = useState(false)
   const glowDataRef = useRef(glowData)
   const showGlowRef = useRef(showGlow)
 
@@ -472,6 +475,7 @@ export function ModelViewer({
         safeSetState(setError, "3D model not available")
         safeSetState(setHasModel, false)
         safeSetState(setIsLoading, false)
+        safeSetState(setModelLoadAttempted, true)
         return
       }
 
@@ -484,6 +488,7 @@ export function ModelViewer({
       safeSetState(setHasModel, true)
       safeSetState(setIsLoading, false)
       safeSetState(setError, null)
+      safeSetState(setModelLoadAttempted, true)
     }
 
     const resolveUrl = (path: string) => {
@@ -529,6 +534,7 @@ export function ModelViewer({
 
       safeSetState(setIsLoading, true)
       safeSetState(setError, null)
+      safeSetState(setModelLoadAttempted, true)
 
       let timeoutId: number | null = window.setTimeout(() => {
         console.warn(`Timed out loading model ${trimmedPath}. Showing fallback instead.`)
@@ -557,8 +563,11 @@ export function ModelViewer({
           modelRef.current = model
           ensureHudPanel()
           positionCameraToModel(model)
+          // Set hasModel to true FIRST to immediately hide the "not available" message
           safeSetState(setHasModel, true)
           safeSetState(setIsLoading, false)
+          safeSetState(setModelLoadAttempted, true)
+          console.log("[ModelViewer] GLB model loaded successfully, hasModel set to true")
         },
         undefined,
         () => {
@@ -594,27 +603,106 @@ export function ModelViewer({
       return
     }
 
-    // Remove all existing glows first
-    if (modelRef.current) {
-      removeGlow(modelRef.current)
-    }
+    // For transformer component, use transformer-specific glow logic
+    if (componentType === "transformer") {
+      // Remove all existing glows first
+      removeTransformerGlow(modelRef.current)
 
-    // Apply glow based on data if showGlow is true
-    if (showGlow && Object.keys(glowData).length > 0 && modelRef.current) {
-      Object.entries(glowData).forEach(([key, value]) => {
-        const glowColor = getGlowColor(key, value)
-        if (glowColor && modelRef.current) {
-          applyGlow(modelRef.current, glowColor)
+      // Apply transformer-specific glow based on data - always apply if we have data
+      // The transformer glow system determines colors based on thresholds, so we need all values
+      if (Object.keys(glowData).length > 0 && modelRef.current) {
+        // Map glowData keys to transformer parameter names
+        const transformerValues: Record<string, number | string> = {}
+        
+        // Map common parameter names to transformer-specific names
+        Object.entries(glowData).forEach(([key, value]) => {
+          // Map common names to transformer-specific names
+          if (key === "windingTemperature" || key === "windingTemp") {
+            transformerValues.windingTemp = value
+          } else if (key === "oilTemperature" || key === "oilTemp") {
+            transformerValues.oilTemp = value
+          } else if (key === "gasLevel" || key === "hydrogen" || key === "hydrogenPPM") {
+            transformerValues.gasLevel = value
+          } else if (key === "tapPosition" || key === "tapPos") {
+            transformerValues.tapPos = value
+          } else if (key === "oilLevel") {
+            transformerValues.oilLevel = value
+          } else {
+            // Keep original key if it matches transformer parameter names
+            transformerValues[key] = value
+          }
+        })
+
+        // Always apply glow for transformer - the glow system will determine colors
+        if (Object.keys(transformerValues).length > 0) {
+          console.log("[ModelViewer] Applying transformer glow with values:", transformerValues)
+          updateTransformerGlow(modelRef.current, transformerValues)
         }
-      })
-    }
+      }
 
-    return () => {
+      return () => {
+        if (modelRef.current) {
+          removeTransformerGlow(modelRef.current)
+        }
+      }
+    } else if (componentType === "circuitBreaker") {
+      // For circuit breaker component, use circuit breaker-specific glow logic
+      // Remove all existing glows first
+      removeCircuitBreakerGlow(modelRef.current)
+
+      // Apply circuit breaker-specific glow based on data - always apply if we have data
+      // The circuit breaker glow system determines colors based on thresholds, so we need all values
+      if (Object.keys(glowData).length > 0 && modelRef.current) {
+        // Map glowData keys to circuit breaker parameter names
+        const circuitBreakerValues: Record<string, number | string> = {}
+        
+        // Map common parameter names to circuit breaker-specific names
+        Object.entries(glowData).forEach(([key, value]) => {
+          // Map common names to circuit breaker-specific names
+          if (key === "sf6Density" || key === "sf6DensityPercent" || key === "sf6Pressure") {
+            circuitBreakerValues.sf6Density = value
+          } else {
+            // Keep original key if it matches circuit breaker parameter names
+            circuitBreakerValues[key] = value
+          }
+        })
+
+        // Always apply glow for circuit breaker - the glow system will determine colors
+        if (Object.keys(circuitBreakerValues).length > 0) {
+          console.log("[ModelViewer] Applying circuit breaker glow with values:", circuitBreakerValues)
+          updateCircuitBreakerGlow(modelRef.current, circuitBreakerValues)
+        }
+      }
+
+      return () => {
+        if (modelRef.current) {
+          removeCircuitBreakerGlow(modelRef.current)
+        }
+      }
+    } else {
+      // For other components, use standard glow logic
+      // Remove all existing glows first
       if (modelRef.current) {
         removeGlow(modelRef.current)
       }
+
+      // Apply glow based on data if showGlow is true
+      if (showGlow && Object.keys(glowData).length > 0 && modelRef.current) {
+        Object.entries(glowData).forEach(([key, value]) => {
+          const glowColor = getGlowColor(key, value)
+          if (glowColor && modelRef.current) {
+            applyGlow(modelRef.current, glowColor)
+          }
+        })
+      }
+
+      return () => {
+        if (modelRef.current) {
+          removeGlow(modelRef.current)
+        }
+      }
     }
-  }, [glowData, showGlow])
+  }, [glowData, showGlow, componentType])
 
   // Apply parameter-based color effects
   useEffect(() => {
@@ -821,8 +909,9 @@ export function ModelViewer({
       )}
 
       {/* No model message - show when model fails to load and no fallback */}
-      {!useFallback && !isLoading && !error && !hasModel && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80">
+      {/* Only show if we've attempted to load, it's not loading, no error, no model, and not using fallback */}
+      {!useFallback && modelLoadAttempted && !isLoading && !error && !hasModel && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-20 pointer-events-none">
           <div className="text-gray-400 text-center">
             <p className="text-lg mb-2">3D Model Not Available</p>
             <p className="text-sm">Model will be available soon</p>

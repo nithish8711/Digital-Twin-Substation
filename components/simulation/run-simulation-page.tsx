@@ -378,6 +378,12 @@ export function RunSimulationPage() {
       // Call backend ML predictor to get model-based health, RUL, risk, etc.
       let mlPrediction: Record<string, any> | null = null
       try {
+        console.log("[Simulation] Calling ML predictor API...", {
+          componentType: selectedComponent,
+          substationId: substation.id,
+          inputKeys: Object.keys(inputValues),
+        })
+        
         const response = await fetch("/api/simulation-ml", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -387,14 +393,46 @@ export function RunSimulationPage() {
             inputValues,
           }),
         })
+
+        console.log("[Simulation] ML API response status:", response.status, response.statusText)
+
         if (response.ok) {
-          mlPrediction = (await response.json()) as Record<string, any>
-          console.log("[Simulation] ML prediction received", mlPrediction)
+          const responseData = await response.json()
+          console.log("[Simulation] ML prediction received:", {
+            keys: Object.keys(responseData),
+            hasError: "error" in responseData,
+            sampleValues: Object.fromEntries(Object.entries(responseData).slice(0, 5))
+          })
+
+          // Check if response contains an error
+          if (responseData.error) {
+            console.error("[Simulation] ML API returned error:", responseData.error, responseData.details)
+            mlPrediction = null
+          } else {
+            mlPrediction = responseData as Record<string, any>
+            console.log("[Simulation] ML prediction successfully parsed:", {
+              trueHealth: mlPrediction.trueHealth,
+              overallHealth: mlPrediction.overallHealth,
+              faultProbability: mlPrediction.faultProbability,
+              stressScore: mlPrediction.stressScore,
+            })
+          }
         } else {
-          console.warn("[Simulation] ML predictor HTTP error", await response.text())
+          const errorText = await response.text()
+          console.error("[Simulation] ML predictor HTTP error:", response.status, errorText)
+          try {
+            const errorJson = JSON.parse(errorText)
+            console.error("[Simulation] ML error details:", errorJson)
+          } catch {
+            // Not JSON, just log as text
+          }
         }
       } catch (mlError) {
-        console.warn("[Simulation] ML predictor failed, continuing with heuristic simulation only", mlError)
+        console.error("[Simulation] ML predictor failed:", mlError)
+        if (mlError instanceof Error) {
+          console.error("[Simulation] ML error stack:", mlError.stack)
+        }
+        console.warn("[Simulation] Continuing with heuristic simulation only")
       }
 
       // Save to Firebase / Mongo-backed video API
@@ -717,8 +755,18 @@ export function RunSimulationPage() {
         solution: solutionPayload,
       }) as typeof baseSimulationData & { solution: typeof solutionPayload }
 
-      console.log("[Simulation] Saving simulation record with initial videoUrl:", resolvedVideoUrl)
+      console.log("[Simulation] Saving simulation record:", {
+        simulationId: docRef.id,
+        componentType: selectedComponent,
+        hasMLData: !!mlPrediction,
+        mlKeys: mlPrediction ? Object.keys(mlPrediction) : [],
+        overallHealth: baseSimulationData.overallHealth,
+        trueHealth: baseSimulationData.trueHealth,
+        faultProbability: baseSimulationData.faultProbability,
+        videoUrl: resolvedVideoUrl,
+      })
       await setDoc(docRef, simulationRecord)
+      console.log("[Simulation] Simulation record saved successfully")
 
       // Navigate to analysis page with simulation ID
       setActiveTab("analysis")

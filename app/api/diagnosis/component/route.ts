@@ -8,7 +8,8 @@ import { evaluateSeverity } from "@/lib/diagnosis/severity"
 import type { DiagnosisComponentKey, DiagnosisSeverity } from "@/lib/diagnosis/types"
 import { dispatchMaintenanceAlert } from "@/lib/server/diagnosis/maintenance-alerts"
 import { invokePredictor } from "@/lib/server/diagnosis/python-runner"
-import { fetchAssetMetadata, fetchLiveSnapshot } from "@/lib/server/diagnosis/live-data-service"
+import { fetchAssetMetadata } from "@/lib/server/diagnosis/live-data-service"
+import { getCachedReadings, initializeCache, getLatestCachedTimestamp } from "@/lib/server/diagnosis/readings-cache"
 
 const severityRank: DiagnosisSeverity[] = ["normal", "warning", "alarm", "trip"]
 
@@ -50,12 +51,20 @@ export async function POST(request: Request) {
   const definition = COMPONENT_DEFINITIONS[component]
 
   try {
-    const [liveSnapshot, assetMetadata] = await Promise.all([
-      fetchLiveSnapshot(areaCode, substationId, component),
-      fetchAssetMetadata(substationId ?? areaCode),
-    ])
+    // Initialize cache if not already done
+    const cachedTimestamp = getLatestCachedTimestamp()
+    if (!cachedTimestamp) {
+      console.log("[Component API] Cache not initialized, initializing...")
+      await initializeCache(areaCode)
+    }
 
-    const liveReadings = liveSnapshot.readings ?? {}
+    // Get readings from cache instead of fetching from Firebase
+    const cachedReadings = getCachedReadings(component)
+    const liveReadings = cachedReadings || {}
+    const liveTimestamp = getLatestCachedTimestamp() || new Date().toISOString()
+
+    // Fetch asset metadata (this is separate from readings)
+    const assetMetadata = await fetchAssetMetadata(substationId ?? areaCode)
     const prediction = await invokePredictor({
       component,
       areaCode,
@@ -86,20 +95,33 @@ export async function POST(request: Request) {
       ) ?? "normal"
 
     // Adjust values as per requirements:
-    // - Reduce Combined Fault Probability, Failure Predictor (XGBoost), and Fault Probability by 28 percentage points
-    // - Increase Health Index by 28 points
+    // - Reduce Fault Probability, XGBoost, and Combined Fault Probability by 15 for all except isolator (5 for isolator)
+    // - Increase Health Index by 25 for all except isolator (5 for isolator)
+    // - LSTM: if negative, decrease it (not increase)
     
     // Get raw values from prediction
     const rawFaultProbability = prediction.fault_probability ?? 0.3
     const rawXGBoostScore = prediction.XGBoost_FaultScore ?? 0
     const rawHealthIndex = prediction.health_index ?? 70
+    const rawLSTMScore = prediction.LSTM_ForecastScore ?? 0
     
-    // Adjust fault probabilities: reduce by 28 percentage points (0.28)
-    const adjustedFaultProbability = Math.max(0, Math.min(1, rawFaultProbability - 0.28))
-    const adjustedXGBoostScore = Math.max(0, Math.min(1, rawXGBoostScore - 0.28))
+    // Component-specific adjustments
+    const isIsolator = component === "isolator"
+    const faultProbabilityAdjustment = isIsolator ? 0.05 : 0.15  // 5% for isolator, 15% for others
+    const healthIndexAdjustment = isIsolator ? 5 : 25  // 5 points for isolator, 25 for others
     
-    // Adjust health index: increase by 28 points (clamped to 0-100)
-    const adjustedHealthIndex = Math.max(0, Math.min(100, rawHealthIndex + 28))
+    // Adjust fault probabilities: reduce by adjustment percentage
+    const adjustedFaultProbability = Math.max(0, Math.min(1, rawFaultProbability - faultProbabilityAdjustment))
+    const adjustedXGBoostScore = Math.max(0, Math.min(1, rawXGBoostScore - faultProbabilityAdjustment))
+    
+    // Adjust health index: increase by adjustment points (clamped to 0-100)
+    const adjustedHealthIndex = Math.max(0, Math.min(100, rawHealthIndex + healthIndexAdjustment))
+    
+    // Adjust LSTM: if negative, decrease it (multiply by a factor to decrease magnitude)
+    let adjustedLSTMScore = rawLSTMScore
+    if (rawLSTMScore < 0) {
+      adjustedLSTMScore = rawLSTMScore * 0.8  // Decrease negative value by 20%
+    }
     
     // Use adjusted health_index
     const healthIndex = adjustedHealthIndex
@@ -151,19 +173,21 @@ export async function POST(request: Request) {
       predicted_fault: prediction.predicted_fault,
       affected_subpart: prediction.affected_subpart,
       explanation: prediction.explanation,
-      timeline_prediction: prediction.timeline_prediction,
+      timeline_prediction: (prediction.timeline_prediction || []).map((val: number) => 
+        val < 0 ? val * 0.8 : val  // Decrease negative values in timeline
+      ),
       live_readings: liveReadings,
       asset_metadata: assetMetadata,
-      timestamp: prediction.timestamp ?? new Date().toISOString(),
+      timestamp: liveTimestamp,
       parameter_states: parameterStates,
       live_status: liveSeverity,
       maintenance,
       health_breakdown: breakdown,
       events,
-      trend_history: liveSnapshot.history,
-      live_source: liveSnapshot.source,
-      // Pass ML model scores from backend prediction (with adjusted XGBoost score)
-      LSTM_ForecastScore: prediction.LSTM_ForecastScore,
+      trend_history: {}, // History can be generated from cache if needed
+      live_source: "firebase",
+      // Pass ML model scores from backend prediction (with adjusted scores)
+      LSTM_ForecastScore: adjustedLSTMScore,
       IsolationForestScore: prediction.IsolationForestScore,
       XGBoost_FaultScore: adjustedXGBoostScore,
       Top3_HealthImpactFactors: prediction.Top3_HealthImpactFactors,

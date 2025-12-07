@@ -8,6 +8,7 @@ import { ConditionalTopNav } from "@/components/layout/conditional-top-nav"
 import { LiveTrendWrapper } from "@/components/live-trend/live-trend-wrapper"
 import { SimulationWrapper } from "@/components/simulation/simulation-wrapper"
 import { DiagnosisWrapper } from "@/components/diagnosis/diagnosis-wrapper"
+import { CourseWrapper } from "@/components/course/course-wrapper"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
@@ -36,19 +37,21 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased bg-gray-50`}>
-        <SidebarProvider defaultOpen={true}>
-          <AppSidebar />
-          <LiveTrendWrapper>
-            <SimulationWrapper>
-              <DiagnosisWrapper>
-                <SidebarInset className="flex flex-col min-h-screen bg-gray-50">
-                  <ConditionalTopNav />
-                  <main className="flex-1 overflow-auto p-6">{children}</main>
-                </SidebarInset>
-              </DiagnosisWrapper>
-            </SimulationWrapper>
-          </LiveTrendWrapper>
-        </SidebarProvider>
+        <CourseWrapper>
+          <SidebarProvider defaultOpen={true}>
+            <AppSidebar />
+            <LiveTrendWrapper>
+              <SimulationWrapper>
+                <DiagnosisWrapper>
+                  <SidebarInset className="flex flex-col min-h-screen bg-gray-50">
+                    <ConditionalTopNav />
+                    <main className="flex-1 overflow-auto p-6">{children}</main>
+                  </SidebarInset>
+                </DiagnosisWrapper>
+              </SimulationWrapper>
+            </LiveTrendWrapper>
+          </SidebarProvider>
+        </CourseWrapper>
       </body>
     </html>
   )

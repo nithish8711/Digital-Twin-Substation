@@ -1,24 +1,17 @@
 "use client"
 
 import { useState } from "react"
-
-import { useLiveData, dataGenerators } from "@/hooks/use-live-data"
+import { useLiveTrend } from "@/components/live-trend/live-trend-context"
+import { useLiveTrendReadings } from "@/hooks/use-live-trend-readings"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ParameterDisplay } from "./parameter-display"
 import { ParameterDetailSection } from "./parameter-detail-section"
-import { buildParameterConfigs } from "./parameter-utils"
 
 export function BusbarPanel() {
-  const data = useLiveData("busbar", dataGenerators.busbar)
+  const { selectedArea } = useLiveTrend()
+  const areaCode = selectedArea?.areaCode || ""
+  const { readings, parameters, isLoading } = useLiveTrendReadings("busbar", areaCode)
   const [selectedParameter, setSelectedParameter] = useState<string | null>(null)
-
-  const preferredOrder = ["busVoltage", "busCurrent", "busbarTemperature", "busbarLoad", "jointHotspotTemp", "impedanceMicroOhm"]
-  const resolvedData = data as Record<string, number | string | null | undefined>
-  const parameters = buildParameterConfigs(resolvedData, preferredOrder)
-
-  const handleToggle = (key: string) => {
-    setSelectedParameter((prev) => (prev === key ? null : key))
-  }
 
   return (
     <Card className="h-full overflow-hidden flex flex-col">
@@ -26,35 +19,41 @@ export function BusbarPanel() {
         <CardTitle>Busbar Live Parameters</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
-        <div className="space-y-4">
-          {parameters.map((param) => {
-            const value = resolvedData[param.key]
-            const expanded = selectedParameter === param.metadataKey
-
-            return (
-              <div key={param.metadataKey} className="space-y-3">
-                <ParameterDisplay
-                  label={param.label}
-                  value={value}
-                  unit={param.unit}
-                  parameterKey={param.metadataKey}
-                  onDetailClick={handleToggle}
-                  isExpanded={expanded}
-                />
-
-                {expanded && (
-                  <div className="border-t pt-4">
-                    <ParameterDetailSection
-                      parameterKey={param.metadataKey}
-                      currentValue={value ?? "—"}
-                      unit={param.unit}
-                    />
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">Loading readings...</div>
+        ) : parameters.length === 0 ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">No readings available. Please select an area.</div>
+        ) : Object.keys(readings).length === 0 ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">No readings available. Waiting for data...</div>
+        ) : (
+          <div className="space-y-4">
+            {parameters.map((param) => {
+              const value = readings[param.key] ?? null
+              const expanded = selectedParameter === param.key
+              return (
+                <div key={param.key} className="space-y-3">
+                  <ParameterDisplay
+                    label={param.label}
+                    value={value}
+                    unit={param.unit}
+                    parameterKey={param.key}
+                    onDetailClick={(key) => setSelectedParameter((prev) => (prev === key ? null : key))}
+                    isExpanded={expanded}
+                  />
+                  {expanded && (
+                    <div className="border-t pt-4">
+                      <ParameterDetailSection
+                        parameterKey={param.key}
+                        currentValue={value ?? "—"}
+                        unit={param.unit}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

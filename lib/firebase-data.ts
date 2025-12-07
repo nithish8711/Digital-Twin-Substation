@@ -1,6 +1,9 @@
 // Firebase data service - fetches from Firestore
 import { collection, getDocs, doc, getDoc, deleteDoc, query, where, limit } from "firebase/firestore"
-import { db } from "./firebase"
+import { getFirestoreDB } from "./firebase"
+
+// Get Firestore instance (lazy initialization)
+const db = getFirestoreDB()
 import type { DummySubstation } from "./dummy-data"
 
 // Fetch all substations from Firebase

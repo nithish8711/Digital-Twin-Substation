@@ -1,8 +1,58 @@
 import type { DiagnosisComponentKey } from "@/lib/diagnosis/types"
+import { generateSyntheticReadings } from "@/lib/diagnosis/realtime-generator"
+
+/**
+ * ML-required parameters for each component (parameters needed for ML model prediction)
+ * Only these parameters will use random generator if missing from Firebase
+ */
+const ML_REQUIRED_PARAMS: Record<DiagnosisComponentKey, string[]> = {
+  bayLines: [
+    "busVoltage",      // live_BusVoltage_kV
+    "lineCurrent",     // live_LineCurrent_A
+    "mw",              // live_ActivePower_MW
+    "mvar",            // live_ReactivePower_MVAR
+    "powerFactor",     // live_PowerFactor
+    "frequency",       // live_Frequency_Hz
+    "thd",             // live_THD_percent
+  ],
+  transformer: [
+    "oilTemp",         // live_OilTemperature_C
+    "windingTemp",     // live_WindingTemperature_C
+    "loading",         // live_LoadingPercent
+    "hydrogen",         // live_Hydrogen_ppm
+    "acetylene",       // live_Acetylene_ppm
+    "moisture",        // live_Moisture_ppm
+    "oilLevel",        // live_OilLevelPercent
+    "tapPosition",     // live_TapPosition
+  ],
+  circuitBreaker: [
+    "operationTime",   // live_OperationTime_ms
+    "sf6Density",      // live_SF6Pressure_bar
+    "motorCurrent",    // live_MotorCurrent_A
+  ],
+  busbar: [
+    "busVoltage",      // live_BusVoltage_kV
+    "busCurrent",      // live_BusCurrent_A
+    "busTemperature", // live_BusTemperature_C
+  ],
+  isolator: [
+    "driveTorque",     // live_DriveTorque_Nm
+    "operatingTime",   // live_OperatingTime_ms
+    "contactResistance", // live_ContactResistance_uOhm
+    "motorCurrent",    // live_MotorCurrent_A
+  ],
+  relay: [],
+  pmu: [],
+  gis: [],
+  battery: [],
+  environment: [],
+}
 
 /**
  * Transforms asset metadata and live readings into the format required by the ML predictor backend.
  * This combines asset specifications from Firebase with live parameter values from diagnosis.
+ * If ML-required parameters are missing from Firebase, uses random generator ONLY for those missing parameters.
+ * All other parameters use Firebase values only (no random generation).
  */
 export function transformToMLInput(
   component: DiagnosisComponentKey,
@@ -71,6 +121,29 @@ export function transformToMLInput(
     installationYear: typeof installationYear === 'number' ? installationYear : parseInt(String(installationYear)) || 2010,
   }
 
+  // Generate synthetic readings ONLY for missing ML-required parameters
+  const mlRequiredParams = ML_REQUIRED_PARAMS[component] || []
+  const syntheticReadings = generateSyntheticReadings(component).readings
+  
+  // Helper function to get value: Firebase first, then synthetic for ML-required params only, then default
+  const getMLValue = (uiKey: string, mlKey: string, defaultValue: number, isMLRequired: boolean) => {
+    // Always prefer Firebase value if available
+    if (liveReadings[uiKey] !== undefined && liveReadings[uiKey] !== null) {
+      return liveReadings[uiKey]
+    }
+    if (liveReadings[mlKey] !== undefined && liveReadings[mlKey] !== null) {
+      return liveReadings[mlKey]
+    }
+    // Only use synthetic for ML-required parameters
+    if (isMLRequired && syntheticReadings[uiKey] !== undefined) {
+      const syntheticValue = syntheticReadings[uiKey]
+      if (typeof syntheticValue === "number") {
+        return syntheticValue
+      }
+    }
+    return defaultValue
+  }
+
   switch (component) {
     case "transformer": {
       const transformerAsset = assets.transformer || assets.transformers?.[0] || {}
@@ -84,14 +157,14 @@ export function transformToMLInput(
         spec_coolingType: transformerAsset.coolingType || transformerAsset.spec_coolingType || "ONAF",
         spec_windingMaterial: transformerAsset.windingMaterial || transformerAsset.spec_windingMaterial || "Cu",
         spec_manufacturer: transformerAsset.manufacturer || transformerAsset.spec_manufacturer || "BHEL",
-        live_OilTemperature_C: liveReadings.oilTemp || liveReadings.live_OilTemperature_C || 63.5,
-        live_WindingTemperature_C: liveReadings.windingTemp || liveReadings.live_WindingTemperature_C || 78.4,
-        live_LoadingPercent: liveReadings.loading || liveReadings.live_LoadingPercent || 92,
-        live_Hydrogen_ppm: liveReadings.hydrogen || liveReadings.live_Hydrogen_ppm || 45,
-        live_Acetylene_ppm: liveReadings.acetylene || liveReadings.live_Acetylene_ppm || 0.2,
-        live_Moisture_ppm: liveReadings.moisture || liveReadings.live_Moisture_ppm || 18,
-        live_OilLevelPercent: liveReadings.oilLevel || liveReadings.live_OilLevelPercent || 96,
-        live_TapPosition: liveReadings.tapPosition || liveReadings.live_TapPosition || 8,
+        live_OilTemperature_C: getMLValue("oilTemp", "live_OilTemperature_C", 63.5, mlRequiredParams.includes("oilTemp")),
+        live_WindingTemperature_C: getMLValue("windingTemp", "live_WindingTemperature_C", 78.4, mlRequiredParams.includes("windingTemp")),
+        live_LoadingPercent: getMLValue("loading", "live_LoadingPercent", 92, mlRequiredParams.includes("loading")),
+        live_Hydrogen_ppm: getMLValue("hydrogen", "live_Hydrogen_ppm", 45, mlRequiredParams.includes("hydrogen")),
+        live_Acetylene_ppm: getMLValue("acetylene", "live_Acetylene_ppm", 0.2, mlRequiredParams.includes("acetylene")),
+        live_Moisture_ppm: getMLValue("moisture", "live_Moisture_ppm", 18, mlRequiredParams.includes("moisture")),
+        live_OilLevelPercent: getMLValue("oilLevel", "live_OilLevelPercent", 96, mlRequiredParams.includes("oilLevel")),
+        live_TapPosition: getMLValue("tapPosition", "live_TapPosition", 8, mlRequiredParams.includes("tapPosition")),
       }
     }
 
@@ -103,13 +176,13 @@ export function transformToMLInput(
         spec_ratedVoltage: bayLineAsset.ratedVoltage || bayLineAsset.spec_ratedVoltage || 400,
         spec_conductorType: bayLineAsset.conductorType || bayLineAsset.spec_conductorType || "Moose",
         spec_thermalLimit_A: bayLineAsset.thermalLimit_A || bayLineAsset.spec_thermalLimit_A || 2500,
-        live_BusVoltage_kV: liveReadings.busVoltage || liveReadings.live_BusVoltage_kV || 398,
-        live_LineCurrent_A: liveReadings.lineCurrent || liveReadings.live_LineCurrent_A || 1780,
-        live_ActivePower_MW: liveReadings.mw || liveReadings.live_ActivePower_MW || 640,
-        live_ReactivePower_MVAR: liveReadings.mvar || liveReadings.live_ReactivePower_MVAR || 40,
-        live_PowerFactor: liveReadings.powerFactor || liveReadings.live_PowerFactor || 0.94,
-        live_Frequency_Hz: liveReadings.frequency || liveReadings.live_Frequency_Hz || 50.02,
-        live_THD_percent: liveReadings.thd || liveReadings.live_THD_percent || 2.6,
+        live_BusVoltage_kV: getMLValue("busVoltage", "live_BusVoltage_kV", 398, mlRequiredParams.includes("busVoltage")),
+        live_LineCurrent_A: getMLValue("lineCurrent", "live_LineCurrent_A", 1780, mlRequiredParams.includes("lineCurrent")),
+        live_ActivePower_MW: getMLValue("mw", "live_ActivePower_MW", 640, mlRequiredParams.includes("mw")),
+        live_ReactivePower_MVAR: getMLValue("mvar", "live_ReactivePower_MVAR", 40, mlRequiredParams.includes("mvar")),
+        live_PowerFactor: getMLValue("powerFactor", "live_PowerFactor", 0.94, mlRequiredParams.includes("powerFactor")),
+        live_Frequency_Hz: getMLValue("frequency", "live_Frequency_Hz", 50.02, mlRequiredParams.includes("frequency")),
+        live_THD_percent: getMLValue("thd", "live_THD_percent", 2.6, mlRequiredParams.includes("thd")),
       }
     }
 
@@ -121,9 +194,9 @@ export function transformToMLInput(
         spec_material: busbarAsset.material || busbarAsset.spec_material || "Cu",
         spec_capacity_A: busbarAsset.capacity_A || busbarAsset.spec_capacity_A || 5000,
         spec_busType: busbarAsset.busType || busbarAsset.spec_busType || "Main",
-        live_BusVoltage_kV: liveReadings.busVoltage || liveReadings.live_BusVoltage_kV || 402,
-        live_BusCurrent_A: liveReadings.busCurrent || liveReadings.live_BusCurrent_A || 3200,
-        live_BusTemperature_C: liveReadings.busTemperature || liveReadings.busbarTemperature || liveReadings.live_BusTemperature_C || 66.8,
+        live_BusVoltage_kV: getMLValue("busVoltage", "live_BusVoltage_kV", 402, mlRequiredParams.includes("busVoltage")),
+        live_BusCurrent_A: getMLValue("busCurrent", "live_BusCurrent_A", 3200, mlRequiredParams.includes("busCurrent")),
+        live_BusTemperature_C: getMLValue("busTemperature", "live_BusTemperature_C", 66.8, mlRequiredParams.includes("busTemperature")),
       }
     }
 
@@ -135,10 +208,10 @@ export function transformToMLInput(
         spec_type: isolatorAsset.type || isolatorAsset.spec_type || "Vertical",
         spec_driveMechanism: isolatorAsset.driveMechanism || isolatorAsset.spec_driveMechanism || "Motorized",
         spec_manufacturer: isolatorAsset.manufacturer || isolatorAsset.spec_manufacturer || "Crompton",
-        live_DriveTorque_Nm: liveReadings.driveTorque || liveReadings.live_DriveTorque_Nm || 95.215,
-        live_OperatingTime_ms: liveReadings.operatingTime || liveReadings.live_OperatingTime_ms || 344.292,
-        live_ContactResistance_uOhm: liveReadings.contactResistance || liveReadings.live_ContactResistance_uOhm || 86.48,
-        live_MotorCurrent_A: liveReadings.motorCurrent || liveReadings.live_MotorCurrent_A || 7.272,
+        live_DriveTorque_Nm: getMLValue("driveTorque", "live_DriveTorque_Nm", 95.215, mlRequiredParams.includes("driveTorque")),
+        live_OperatingTime_ms: getMLValue("operatingTime", "live_OperatingTime_ms", 344.292, mlRequiredParams.includes("operatingTime")),
+        live_ContactResistance_uOhm: getMLValue("contactResistance", "live_ContactResistance_uOhm", 86.48, mlRequiredParams.includes("contactResistance")),
+        live_MotorCurrent_A: getMLValue("motorCurrent", "live_MotorCurrent_A", 7.272, mlRequiredParams.includes("motorCurrent")),
       }
     }
 
@@ -151,9 +224,9 @@ export function transformToMLInput(
         spec_ratedCurrent_A: breakerAsset.ratedCurrent_A || breakerAsset.spec_ratedCurrent_A || 1600,
         spec_mechanismType: breakerAsset.mechanismType || breakerAsset.spec_mechanismType || "Spring",
         spec_manufacturer: breakerAsset.manufacturer || breakerAsset.spec_manufacturer || "ABB",
-        live_OperationTime_ms: liveReadings.operationTime || liveReadings.live_OperationTime_ms || 62,
-        live_SF6Pressure_bar: liveReadings.sf6Density || liveReadings.sf6Pressure || liveReadings.live_SF6Pressure_bar || 6.3,
-        live_MotorCurrent_A: liveReadings.motorCurrent || liveReadings.live_MotorCurrent_A || 14.6,
+        live_OperationTime_ms: getMLValue("operationTime", "live_OperationTime_ms", 62, mlRequiredParams.includes("operationTime")),
+        live_SF6Pressure_bar: getMLValue("sf6Density", "live_SF6Pressure_bar", 6.3, mlRequiredParams.includes("sf6Density")),
+        live_MotorCurrent_A: getMLValue("motorCurrent", "live_MotorCurrent_A", 14.6, mlRequiredParams.includes("motorCurrent")),
       }
     }
 

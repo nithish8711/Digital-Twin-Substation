@@ -39,7 +39,7 @@ export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefin
     description: "Core, winding and insulation diagnostics.",
     category: "primary",
     parameters: [
-      { key: "windingTemp", label: "Winding Temperature", unit: "°C", min: 40, max: 90, minAlarm: 35, maxAlarm: 95 },
+      { key: "windingTemp", label: "Winding Temperature", unit: "°C", min: 40, max: 90, minAlarm: 35, maxAlarm: 85 },
       { key: "oilTemp", label: "Oil Temperature", unit: "°C", min: 30, max: 80, minAlarm: 25, maxAlarm: 85 },
       { key: "loading", label: "Loading", unit: "%", min: 20, max: 110, minAlarm: 0, maxAlarm: 120 },
       { key: "tapPosition", label: "Tap Position", unit: "step", min: 1, max: 17, minAlarm: 1, maxAlarm: 17 },

@@ -1,46 +1,26 @@
 "use client"
 
-import { useState, Suspense, lazy, useMemo } from "react"
+import { useState, Suspense, lazy, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Search, AlertTriangle, Loader2 } from "lucide-react"
-import { SubstationPanel } from "@/components/live-trend/substation-panel"
-import { TransformerPanel } from "@/components/live-trend/transformer-panel"
-import { BayLinesPanel } from "@/components/live-trend/bay-lines-panel"
-import { CircuitBreakerPanel } from "@/components/live-trend/circuit-breaker-panel"
-import { IsolatorPanel } from "@/components/live-trend/isolator-panel"
-import { BusbarPanel } from "@/components/live-trend/busbar-panel"
-import { OthersPanel } from "@/components/live-trend/others-panel"
 import { ModelViewer } from "@/components/live-trend/model-viewer"
 import { useLiveData, dataGenerators } from "@/hooks/use-live-data"
 import { getGlowColor } from "@/lib/live-trend/glow-utils"
 import { useLiveTrend } from "@/components/live-trend/live-trend-context"
 import { getSubstationById } from "@/lib/firebase-data"
 import type { DummySubstation } from "@/lib/dummy-data"
+import { useAllFirebaseReadings } from "@/hooks/use-all-firebase-readings"
 
-// Lazy load panels for better performance
-const LazySubstationPanel = lazy(() =>
-  Promise.resolve({ default: SubstationPanel })
-)
-const LazyTransformerPanel = lazy(() =>
-  Promise.resolve({ default: TransformerPanel })
-)
-const LazyBayLinesPanel = lazy(() =>
-  Promise.resolve({ default: BayLinesPanel })
-)
-const LazyCircuitBreakerPanel = lazy(() =>
-  Promise.resolve({ default: CircuitBreakerPanel })
-)
-const LazyIsolatorPanel = lazy(() =>
-  Promise.resolve({ default: IsolatorPanel })
-)
-const LazyBusbarPanel = lazy(() =>
-  Promise.resolve({ default: BusbarPanel })
-)
-const LazyOthersPanel = lazy(() =>
-  Promise.resolve({ default: OthersPanel })
-)
+// Lazy load panels for better performance - actually lazy load with dynamic imports
+const LazySubstationPanel = lazy(() => import("@/components/live-trend/substation-panel").then(m => ({ default: m.SubstationPanel })))
+const LazyTransformerPanel = lazy(() => import("@/components/live-trend/transformer-panel").then(m => ({ default: m.TransformerPanel })))
+const LazyBayLinesPanel = lazy(() => import("@/components/live-trend/bay-lines-panel").then(m => ({ default: m.BayLinesPanel })))
+const LazyCircuitBreakerPanel = lazy(() => import("@/components/live-trend/circuit-breaker-panel").then(m => ({ default: m.CircuitBreakerPanel })))
+const LazyIsolatorPanel = lazy(() => import("@/components/live-trend/isolator-panel").then(m => ({ default: m.IsolatorPanel })))
+const LazyBusbarPanel = lazy(() => import("@/components/live-trend/busbar-panel").then(m => ({ default: m.BusbarPanel })))
+const LazyOthersPanel = lazy(() => import("@/components/live-trend/others-panel").then(m => ({ default: m.OthersPanel })))
 
 const toRealtimeKey = (value: string) => value.trim().replace(/\s+/g, "_")
 
@@ -52,84 +32,78 @@ function LoadingFallback() {
   )
 }
 
-// Helper function to get all critical values (orange) from all panels
+// Helper function to get all critical values (orange) from all panels using Firebase readings
 function useCriticalValues() {
-  const substationData = useLiveData("substation", dataGenerators.substation)
-  const transformerData = useLiveData("transformer", dataGenerators.transformer)
-  const bayLinesData = useLiveData("bayLines", dataGenerators.bayLines)
-  const circuitBreakerData = useLiveData("circuitBreaker", dataGenerators.circuitBreaker)
-  const busbarData = useLiveData("busbar", dataGenerators.busbar)
+  const { selectedArea } = useLiveTrend()
+  const areaCode = selectedArea?.areaCode || ""
+  const { allReadings } = useAllFirebaseReadings(areaCode)
+  
+  // Fallback to dummy data for "others" category (not in Firebase)
   const othersData = useLiveData("others", dataGenerators.others)
 
   return useMemo(() => {
     const criticalValues: Array<{ label: string; value: number | string; unit: string; category: string }> = []
     
     // Check all parameters for orange status (#FF8A2A)
-    const checkParameter = (data: Record<string, number | string>, category: string, params: Array<{ key: string; label: string; unit: string }>) => {
+    const checkParameter = (data: Record<string, number | string | null>, category: string, params: Array<{ key: string; label: string; unit: string }>) => {
       params.forEach(({ key, label, unit }) => {
         const value = data[key]
-        if (value !== undefined) {
-          const glowColor = getGlowColor(key, value)
+        if (value !== undefined && value !== null) {
+          const glowColor = getGlowColor(key, value as number | string)
           if (glowColor === "#FF8A2A") { // Orange
-            criticalValues.push({ label, value, unit, category })
+            criticalValues.push({ label, value: value as number | string, unit, category })
           }
         }
       })
     }
 
-    // Substation parameters
-    checkParameter(substationData, "Substation", [
-      { key: "voltage", label: "Voltage", unit: "kV" },
-      { key: "mw", label: "Active Power", unit: "MW" },
-      { key: "mvar", label: "Reactive Power", unit: "MVAR" },
-      { key: "frequency", label: "Frequency", unit: "Hz" },
-      { key: "powerFactor", label: "Power Factor", unit: "p.u." },
-      { key: "current", label: "Current", unit: "A" },
-    ])
-
-    // Transformer parameters
-    checkParameter(transformerData, "Transformer", [
+    // Transformer parameters (from Firebase)
+    const transformerReadings = allReadings.transformer || {}
+    checkParameter(transformerReadings, "Transformer", [
       { key: "oilLevel", label: "Oil Level", unit: "%" },
-      { key: "oilTemperature", label: "Oil Temperature", unit: "°C" },
-      { key: "gasLevel", label: "Gas Level", unit: "ppm" },
-      { key: "windingTemperature", label: "Winding Temperature", unit: "°C" },
+      { key: "oilTemp", label: "Oil Temperature", unit: "°C" },
+      { key: "hydrogen", label: "Gas Level (Hydrogen)", unit: "ppm" },
+      { key: "windingTemp", label: "Winding Temperature", unit: "°C" },
       { key: "tapPosition", label: "Tap Position", unit: "steps" },
     ])
 
-    // Bay Lines parameters
-    checkParameter(bayLinesData, "Bay Lines", [
-      { key: "ctLoading", label: "CT Loading", unit: "%" },
-      { key: "ptVoltageDeviation", label: "PT Voltage Deviation", unit: "%" },
+    // Bay Lines parameters (from Firebase)
+    const bayLinesReadings = allReadings.bayLines || {}
+    checkParameter(bayLinesReadings, "Bay Lines", [
       { key: "frequency", label: "Frequency", unit: "Hz" },
       { key: "powerFactor", label: "Power Factor", unit: "p.u." },
+      { key: "mw", label: "Active Power", unit: "MW" },
     ])
 
-    // Circuit Breaker parameters
-    checkParameter(circuitBreakerData, "Circuit Breaker", [
-      { key: "sf6Density", label: "SF6 Density", unit: "%" },
-      { key: "operationCount", label: "Operation Count", unit: "count" },
+    // Circuit Breaker parameters (from Firebase)
+    const circuitBreakerReadings = allReadings.circuitBreaker || {}
+    checkParameter(circuitBreakerReadings, "Circuit Breaker", [
+      { key: "sf6Density", label: "SF6 Density", unit: "bar" },
     ])
 
-    // Busbar parameters
-    checkParameter(busbarData, "Busbar", [
+    // Busbar parameters (from Firebase)
+    const busbarReadings = allReadings.busbar || {}
+    checkParameter(busbarReadings, "Busbar", [
       { key: "busVoltage", label: "Bus Voltage", unit: "kV" },
       { key: "busCurrent", label: "Bus Current", unit: "A" },
-      { key: "busbarTemperature", label: "Bus Temperature", unit: "°C" },
-      { key: "busbarLoad", label: "Bus Load", unit: "%" },
+      { key: "busTemperature", label: "Bus Temperature", unit: "°C" },
     ])
 
-    // Others parameters
+    // Others parameters (still using dummy data as it's not in Firebase)
     checkParameter(othersData, "Others", [
       { key: "tripCount", label: "Trip Count", unit: "count" },
       { key: "batterySOC", label: "Battery SOC", unit: "%" },
     ])
 
     return criticalValues
-  }, [substationData, transformerData, bayLinesData, circuitBreakerData, busbarData, othersData])
+  }, [allReadings, othersData])
 }
 
 // Helper to get glow data for each category
 function useGlowData(category: string) {
+  const { selectedArea } = useLiveTrend()
+  const areaCode = selectedArea?.areaCode || ""
+  const { allReadings } = useAllFirebaseReadings(areaCode)
   const transformerData = useLiveData("transformer", dataGenerators.transformer)
   const bayLinesData = useLiveData("bayLines", dataGenerators.bayLines)
   const circuitBreakerData = useLiveData("circuitBreaker", dataGenerators.circuitBreaker)
@@ -139,11 +113,42 @@ function useGlowData(category: string) {
     const glow: Record<string, number | string> = {}
     
     if (category === "transformer") {
-      if (transformerData.oilLevel < 30) glow.oilLevel = transformerData.oilLevel
-      if (transformerData.oilTemperature > 85) glow.oilTemperature = transformerData.oilTemperature
-      if (transformerData.gasLevel > 300) glow.gasLevel = transformerData.gasLevel
-      if (transformerData.windingTemperature > 110) glow.windingTemperature = transformerData.windingTemperature
-      if (Math.abs(transformerData.tapPosition) > 4) glow.tapPosition = transformerData.tapPosition
+      // For transformer, pass ALL parameter values to the glow system
+      // The transformer glow utils will determine the color based on thresholds
+      const transformerReadings = allReadings.transformer || {}
+      
+      // Map Firebase parameter names to transformer glow parameter names
+      if (transformerReadings.windingTemp !== undefined && transformerReadings.windingTemp !== null) {
+        glow.windingTemp = transformerReadings.windingTemp
+      } else if (transformerData.windingTemperature !== undefined) {
+        glow.windingTemp = transformerData.windingTemperature
+      }
+      
+      if (transformerReadings.oilTemp !== undefined && transformerReadings.oilTemp !== null) {
+        glow.oilTemp = transformerReadings.oilTemp
+      } else if (transformerData.oilTemperature !== undefined) {
+        glow.oilTemp = transformerData.oilTemperature
+      }
+      
+      if (transformerReadings.hydrogen !== undefined && transformerReadings.hydrogen !== null) {
+        glow.gasLevel = transformerReadings.hydrogen
+      } else if (transformerReadings.gasLevel !== undefined && transformerReadings.gasLevel !== null) {
+        glow.gasLevel = transformerReadings.gasLevel
+      } else if (transformerData.gasLevel !== undefined) {
+        glow.gasLevel = transformerData.gasLevel
+      }
+      
+      if (transformerReadings.tapPosition !== undefined && transformerReadings.tapPosition !== null) {
+        glow.tapPos = transformerReadings.tapPosition
+      } else if (transformerData.tapPosition !== undefined) {
+        glow.tapPos = transformerData.tapPosition
+      }
+      
+      if (transformerReadings.oilLevel !== undefined && transformerReadings.oilLevel !== null) {
+        glow.oilLevel = transformerReadings.oilLevel
+      } else if (transformerData.oilLevel !== undefined) {
+        glow.oilLevel = transformerData.oilLevel
+      }
     } else if (category === "bayLines") {
       if (bayLinesData.ctLoading > 60) glow.ctLoading = bayLinesData.ctLoading
       if (bayLinesData.ptVoltageDeviation < 90 || bayLinesData.ptVoltageDeviation > 110) {
@@ -154,10 +159,16 @@ function useGlowData(category: string) {
       }
       if (bayLinesData.powerFactor < 0.95) glow.powerFactor = bayLinesData.powerFactor
     } else if (category === "circuitBreaker") {
-      if (circuitBreakerData.sf6Density < 90) glow.sf6Density = circuitBreakerData.sf6Density
-      const maxOps = 10000
-      const percent = (circuitBreakerData.operationCount / maxOps) * 100
-      if (percent > 50) glow.operationCount = circuitBreakerData.operationCount
+      // For circuit breaker, pass ALL parameter values to the glow system
+      // The circuit breaker glow system will determine the color based on thresholds
+      const circuitBreakerReadings = allReadings.circuitBreaker || {}
+      
+      // Map Firebase parameter names to circuit breaker glow parameter names
+      if (circuitBreakerReadings.sf6Density !== undefined && circuitBreakerReadings.sf6Density !== null) {
+        glow.sf6Density = circuitBreakerReadings.sf6Density
+      } else if (circuitBreakerData.sf6Density !== undefined) {
+        glow.sf6Density = circuitBreakerData.sf6Density
+      }
     } else if (category === "busbar") {
       if (busbarData.busbarLoad > 80) glow.busbarLoad = busbarData.busbarLoad
       if (busbarData.busbarTemperature > 80) glow.busbarTemperature = busbarData.busbarTemperature
@@ -166,17 +177,65 @@ function useGlowData(category: string) {
     }
 
     return glow
-  }, [category, transformerData, bayLinesData, circuitBreakerData, busbarData])
+  }, [category, transformerData, bayLinesData, circuitBreakerData, busbarData, allReadings])
 }
 
 export default function LiveTrendPage() {
-  const { activeCategory, setSelectedArea } = useLiveTrend()
+  const { activeCategory, setSelectedArea, selectedArea } = useLiveTrend()
   const criticalValues = useCriticalValues()
   const glowData = useGlowData(activeCategory)
   const [substationId, setSubstationId] = useState<string>("")
   const [substation, setSubstation] = useState<DummySubstation | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Preload data for all components when area is selected (background fetch)
+  useEffect(() => {
+    const areaCode = selectedArea?.areaCode
+    if (!areaCode) return
+
+    // Preload readings for all components in the background
+    // This ensures data is cached when user switches categories
+    const components: Array<"bayLines" | "transformer" | "circuitBreaker" | "busbar" | "isolator"> = [
+      "bayLines",
+      "transformer",
+      "circuitBreaker",
+      "busbar",
+      "isolator",
+    ]
+
+    // Fetch timestamp first
+    fetch("/api/diagnosis/timestamp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ areaCode }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        const timestamp = data.timestamp
+        if (!timestamp) return
+
+        // Preload all components in parallel (background, no loading indicators)
+        components.forEach((component) => {
+          fetch("/api/diagnosis/readings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              areaCode,
+              componentType: component,
+              timestamp,
+            }),
+          }).catch((err) => {
+            // Silently fail - this is just preloading
+            console.debug(`Preload failed for ${component}:`, err)
+          })
+        })
+      })
+      .catch((err) => {
+        // Silently fail - this is just preloading
+        console.debug("Preload timestamp check failed:", err)
+      })
+  }, [selectedArea?.areaCode])
 
   const handleSearch = async () => {
     if (!substationId.trim()) {
@@ -189,9 +248,12 @@ export default function LiveTrendPage() {
     try {
       const searchTerm = substationId.trim().toLowerCase()
       const realtimeKey = toRealtimeKey(substationId)
+      // Use the input as area code initially (will be updated if substation found)
+      const initialAreaCode = substationId.trim()
       setSelectedArea({
         key: realtimeKey,
         label: substationId.trim(),
+        areaCode: initialAreaCode,
         metadata: { areaName: substationId.trim() },
       })
       
@@ -205,11 +267,15 @@ export default function LiveTrendPage() {
             data.master.name ??
             substationId,
         )
+        // Use substationCode or areaName as the actual area code for Firebase API
+        const actualAreaCode = data.master.substationCode ?? data.master.areaName ?? data.master.name ?? substationId.trim()
         setSelectedArea({
           key: derivedKey,
           label: data.master.areaName ?? data.master.name ?? substationId.trim(),
+          areaCode: actualAreaCode,
           metadata: {
             areaName: data.master.areaName,
+            substationCode: data.master.substationCode,
             installationYear: data.master.installationYear,
             latitude: data.master.latitude,
             longitude: data.master.longitude,
@@ -237,11 +303,15 @@ export default function LiveTrendPage() {
             found.master.name ??
             substationId,
         )
+        // Use substationCode or areaName as the actual area code for Firebase API
+        const actualAreaCode = found.master.substationCode ?? found.master.areaName ?? found.master.name ?? substationId.trim()
         setSelectedArea({
           key: derivedKey,
           label: found.master.areaName ?? found.master.name ?? substationId.trim(),
+          areaCode: actualAreaCode,
           metadata: {
             areaName: found.master.areaName,
+            substationCode: found.master.substationCode,
             installationYear: found.master.installationYear,
             latitude: found.master.latitude,
             longitude: found.master.longitude,
@@ -442,12 +512,12 @@ export default function LiveTrendPage() {
                   <CardContent className="p-0 flex-1 min-h-0">
                     <ModelViewer
                       key="transformer-model"
-                      modelPath="/models/transformer/transformer.glb"
+                      modelPath="/model/transformer_model.glb"
                       glowData={glowData}
-                      showGlow={Object.keys(glowData).length > 0}
+                      showGlow={true}
                       className="w-full h-full"
                       componentType="transformer"
-                      useFallback
+                      useFallback={false}
                     />
                   </CardContent>
                 </Card>
@@ -460,12 +530,12 @@ export default function LiveTrendPage() {
                   <CardContent className="p-0 flex-1 min-h-0">
                     <ModelViewer
                       key="circuitBreaker-model"
-                      modelPath="/models/circuit-breaker/circuit-breaker.glb"
+                      modelPath="/model/circuitbreaker_model.glb"
                       glowData={glowData}
-                      showGlow={Object.keys(glowData).length > 0}
+                      showGlow={true}
                       className="w-full h-full"
                       componentType="circuitBreaker"
-                      useFallback
+                      useFallback={false}
                     />
                   </CardContent>
                 </Card>

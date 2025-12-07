@@ -1,6 +1,8 @@
 "use client"
 
 import { getGlowColor } from "@/lib/live-trend/glow-utils"
+import { getTransformerParameterColor } from "@/lib/live-trend/transformer-glow-utils"
+import { getCircuitBreakerParameterColor } from "@/lib/live-trend/circuit-breaker-glow-utils"
 import { ChevronRight, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useIsMounted } from "@/hooks/use-is-mounted"
@@ -12,6 +14,7 @@ interface ParameterDisplayProps {
   parameterKey: string
   onDetailClick: (key: string) => void
   isExpanded?: boolean
+  componentType?: string
 }
 
 const formatValue = (value?: number | string | null): string => {
@@ -46,9 +49,20 @@ export function ParameterDisplay({
   parameterKey,
   onDetailClick,
   isExpanded = false,
+  componentType,
 }: ParameterDisplayProps) {
   const isMounted = useIsMounted()
-  const glowColor = getGlowColor(parameterKey, value ?? 0)
+  
+  // Use component-specific color logic
+  let glowColor: string | null = null
+  if (componentType === "transformer") {
+    glowColor = getTransformerParameterColor(parameterKey, value)
+  } else if (componentType === "circuitBreaker") {
+    glowColor = getCircuitBreakerParameterColor(parameterKey, value)
+  } else {
+    glowColor = getGlowColor(parameterKey, value ?? 0)
+  }
+  
   const formattedValue = formatValue(value)
   const indicatorColor = glowColor ? withAlpha(glowColor, "ff") : "#CBD5F5"
 

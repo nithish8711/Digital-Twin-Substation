@@ -90,7 +90,13 @@ def load_artifacts(model_name: str) -> ModelArtifacts:
     """
     base_path = os.path.join(MODEL_ROOT, model_name)
     # Backward compatibility: models may be directly under MODEL_ROOT
-    if not os.path.isdir(base_path):
+    # Check if the subdirectory exists AND contains the required model file
+    xgb_filename = f"xgb_model_{model_name}.joblib"
+    if os.path.isdir(base_path) and os.path.isfile(os.path.join(base_path, xgb_filename)):
+        # Files are in the subdirectory
+        pass
+    else:
+        # Files are directly under MODEL_ROOT
         base_path = MODEL_ROOT
 
     def _p(filename: str) -> str:

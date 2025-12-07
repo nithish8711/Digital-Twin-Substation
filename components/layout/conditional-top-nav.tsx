@@ -31,6 +31,11 @@ export function ConditionalTopNav() {
     return <SimulationTopNav />
   }
   
+  // Show different nav for course/resources page (no buttons)
+  if (pathname?.startsWith("/resources")) {
+    return <TopNav showAssetButtons={false} />
+  }
+  
   // Show full nav with asset buttons for asset pages
   if (isAssetPage) {
   return <TopNav />

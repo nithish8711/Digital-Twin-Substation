@@ -3,7 +3,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
-export function TopNav() {
+export function TopNav({ showAssetButtons = true }: { showAssetButtons?: boolean }) {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
       <div className="flex h-16 items-center px-4 gap-4">
@@ -17,31 +17,33 @@ export function TopNav() {
           </Link>
         </div>
 
-        <div className="flex flex-1 items-center justify-end space-x-4">
-          <nav className="flex items-center space-x-2">
-            <Button
-              variant="default"
-              className="shadow-md transition-all"
-              asChild
-            >
-              <Link href="/view-substations">View Substations</Link>
-            </Button>
-            <Button
-              variant="default"
-              className="shadow-md transition-all"
-              asChild
-            >
-              <Link href="/create-substation">Create Substation</Link>
-            </Button>
-            <Button
-              variant="default"
-              className="shadow-md transition-all"
-              asChild
-            >
-              <Link href="/manage-substations">Manage Substations</Link>
-            </Button>
-          </nav>
-        </div>
+        {showAssetButtons && (
+          <div className="flex flex-1 items-center justify-end space-x-4">
+            <nav className="flex items-center space-x-2">
+              <Button
+                variant="default"
+                className="shadow-md transition-all"
+                asChild
+              >
+                <Link href="/view-substations">View Substations</Link>
+              </Button>
+              <Button
+                variant="default"
+                className="shadow-md transition-all"
+                asChild
+              >
+                <Link href="/create-substation">Create Substation</Link>
+              </Button>
+              <Button
+                variant="default"
+                className="shadow-md transition-all"
+                asChild
+              >
+                <Link href="/manage-substations">Manage Substations</Link>
+              </Button>
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   )

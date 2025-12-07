@@ -39,30 +39,10 @@ interface LivePanelProps {
 export function LivePanel({ component, parameterStates, trendHistory, liveTimestamp, liveSource }: LivePanelProps) {
   const definition = COMPONENT_DEFINITIONS[component]
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
-  const [tick, setTick] = useState(0)
-
-  useEffect(() => {
-    const interval = setInterval(() => setTick((prev) => prev + 1), 5000)
-    return () => clearInterval(interval)
-  }, [])
 
   useEffect(() => {
     queueMicrotask(() => setExpandedKey(null))
   }, [component])
-
-  const animatedValues = useMemo(() => {
-    const jitterMap: Record<string, number | string | null | undefined> = {}
-    parameterStates.forEach((param) => {
-      if (typeof param.value === "number") {
-        const jitter =
-          Math.sin((tick + param.key.length) * 1.37) * Math.max(0.01 * Math.abs(param.value), 0.5)
-        jitterMap[param.key] = Number((param.value + jitter).toFixed(2))
-      } else {
-        jitterMap[param.key] = param.value
-      }
-    })
-    return jitterMap
-  }, [parameterStates, tick])
 
   return (
     <Card className="shadow-lg">
@@ -102,7 +82,8 @@ export function LivePanel({ component, parameterStates, trendHistory, liveTimest
                   ? `${definitionParam?.minAlarm ?? "-"} / ${definitionParam?.maxAlarm ?? "-"}`
                   : "—"
               const trend = trendHistory[param.key] ?? []
-              const displayValue = animatedValues[param.key] ?? param.value
+              // Use actual Firebase value - no animation/jitter
+              const displayValue = param.value
 
               return (
                 <Fragment key={param.key}>

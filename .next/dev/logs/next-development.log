@@ -1,0 +1,27 @@
+[00:00:04.350] Server  LOG      ✓ Ready in 3.5s
+[00:00:25.615] Server  LOG      ○ Compiling /simulation/detail ...
+[00:00:37.690] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:00:39.137] Browser LOG     [Analysis] Resolving video source {"hasAnyCustomVideo":false,"isHttpUrl":false,"rawVideoUrl":"","simulationId":"4g0ePqWRcEk489KDekIC","trimmed":""}
+[00:00:39.137] Browser LOG     [Analysis] Resolving video source {"hasAnyCustomVideo":false,"isHttpUrl":false,"rawVideoUrl":"","simulationId":"4g0ePqWRcEk489KDekIC","trimmed":""}
+[00:00:42.860] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":0.9409072971343999,"faultProbability":0.31706805070241306,"simulationProgress":0.12666666666666673,"stressScore":0,"trueHealth":98.33659400939942}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":0.965668015480042,"faultProbability":0.3254119467735292,"simulationProgress":0.13000000000000006,"stressScore":0,"trueHealth":98.2928201675415}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":0.990428733825684,"faultProbability":0.3337558428446453,"simulationProgress":0.1333333333333334,"stressScore":0,"trueHealth":98.2490463256836}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.015189452171326,"faultProbability":0.34209973891576145,"simulationProgress":0.13666666666666671,"stressScore":0,"trueHealth":98.20527248382568}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.0647108888626102,"faultProbability":0.35878753105799366,"simulationProgress":0.14333333333333337,"stressScore":0,"trueHealth":98.11772480010987}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.089471607208252,"faultProbability":0.3671314271291097,"simulationProgress":0.14666666666666667,"stressScore":0,"trueHealth":98.07395095825196}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.114232325553894,"faultProbability":0.3754753232002258,"simulationProgress":0.15,"stressScore":0,"trueHealth":98.03017711639404}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.1389930438995362,"faultProbability":0.38381921927134194,"simulationProgress":0.15333333333333332,"stressScore":0,"trueHealth":97.98640327453613}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.18851448059082,"faultProbability":0.40050701141357414,"simulationProgress":0.15999999999999998,"stressScore":0,"trueHealth":97.89885559082032}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.213275198936462,"faultProbability":0.4088509074846902,"simulationProgress":0.16333333333333327,"stressScore":0,"trueHealth":97.8550817489624}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.238035917282104,"faultProbability":0.4171948035558063,"simulationProgress":0.1666666666666666,"stressScore":0,"trueHealth":97.81130790710449}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.262796635627746,"faultProbability":0.4255386996269224,"simulationProgress":0.16999999999999993,"stressScore":0,"trueHealth":97.76753406524658}
+[00:00:42.861] Browser LOG     [ColorTransition] Applying color transition: {"agingFactor":1.287557353973388,"faultProbability":0.43388259569803855,"simulationProgress":0.17333333333333326,"stressScore":0,"trueHealth":97.72376022338867}
+[00:00:45.348] Server  WARN     ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+[00:00:46.169] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:02:22.144] Server  WARN     ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+[00:02:23.048] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:02:24.919] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:08:45.198] Server  WARN     ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[00:08:45.199] Browser ERROR   uncaughtError: TypeError: Cannot read properties of undefined (reading 'videos')
+[00:08:46.128] Server  ERROR    ⨯ TypeError: Cannot read properties of undefined (reading 'videos')
+[00:08:50.242] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold

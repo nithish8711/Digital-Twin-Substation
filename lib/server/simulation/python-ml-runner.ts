@@ -48,9 +48,22 @@ const runCommand = (args: string[]) =>
           warningPatterns.some((pattern) => pattern.test(line))
         )
       
+      // Check if stdout contains a JSON error object (Python script may return error as JSON)
+      let stdoutError: any = null
+      if (stdout.trim()) {
+        try {
+          const parsed = JSON.parse(stdout.trim())
+          if (parsed && typeof parsed === "object" && "error" in parsed) {
+            stdoutError = parsed
+          }
+        } catch {
+          // Not JSON or not an error object, continue
+        }
+      }
+
       // If stdout has content and stderr only contains warnings, treat as success
       // This handles cases where TensorFlow writes to stderr but the script succeeds
-      if (code === 0 || (stdout.trim().length > 0 && allLinesAreWarnings)) {
+      if (code === 0 || (stdout.trim().length > 0 && allLinesAreWarnings && !stdoutError)) {
         // If stderr contains only warnings/info messages, log them but don't fail
         if (stderr && allLinesAreWarnings) {
           // Only log if there are actual warnings (not just TensorFlow info)
@@ -68,18 +81,29 @@ const runCommand = (args: string[]) =>
         
         if (stdout.trim().length === 0) {
           reject(new Error("Empty output from Python script"))
+        } else if (stdoutError) {
+          // Python script returned an error in JSON format
+          reject(new Error(stdoutError.error || "Python script returned an error"))
         } else {
           resolve(stdout.trim())
         }
       } else {
         // Only reject if there are actual errors (not just TensorFlow warnings)
-        if (allLinesAreWarnings && stdout.trim().length > 0) {
+        if (allLinesAreWarnings && stdout.trim().length > 0 && !stdoutError) {
           // Stderr only has warnings but we have stdout, so treat as success
           resolve(stdout.trim())
         } else {
           // There are real errors
-          const errorMsg = stderr.trim() || `Python exited with code ${code}`
-          reject(new Error(errorMsg))
+          if (stdoutError) {
+            // Python script returned error as JSON
+            const errorMsg = stdoutError.error || "Python script error"
+            console.error("[Python ML] Python script error:", stdoutError)
+            reject(new Error(errorMsg))
+          } else {
+            const errorMsg = stderr.trim() || `Python exited with code ${code}`
+            console.error("[Python ML] Execution error:", { code, stderr: stderr.trim(), stdout: stdout.trim().substring(0, 200) })
+            reject(new Error(errorMsg))
+          }
         }
       }
     })
@@ -102,7 +126,9 @@ export async function invokeSimulationPredictor(opts: {
     JSON.stringify(inputValues),
   ]
 
+  console.log("[Python ML Runner] Executing command:", args.join(" "))
   const output = await runCommand(args)
+  console.log("[Python ML Runner] Raw output length:", output.length, "characters")
 
   // The Python script may emit auxiliary JSON lines (e.g. warnings) or logs
   // before the final prediction payload. We only want to parse the last
@@ -113,13 +139,48 @@ export async function invokeSimulationPredictor(opts: {
     .filter((line) => line.length > 0)
 
   if (lines.length === 0) {
+    console.error("[Python ML Runner] Empty output from script")
     throw new Error("Empty output from simulation_predictor.py")
   }
 
-  const candidate =
-    [...lines].reverse().find((line) => line.startsWith("{") && line.endsWith("}")) ?? lines[lines.length - 1]
+  console.log("[Python ML Runner] Output lines:", lines.length)
+  console.log("[Python ML Runner] Last few lines:", lines.slice(-3))
 
-  return JSON.parse(candidate)
+  // Find the last valid JSON object
+  let candidate: string | null = null
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]
+    if (line.startsWith("{") && line.endsWith("}")) {
+      try {
+        // Try to parse to verify it's valid JSON
+        JSON.parse(line)
+        candidate = line
+        break
+      } catch {
+        // Not valid JSON, continue searching
+        continue
+      }
+    }
+  }
+
+  if (!candidate) {
+    console.error("[Python ML Runner] No valid JSON found in output")
+    console.error("[Python ML Runner] All lines:", lines)
+    throw new Error("No valid JSON output found from simulation_predictor.py")
+  }
+
+  try {
+    const parsed = JSON.parse(candidate)
+    console.log("[Python ML Runner] Successfully parsed prediction:", {
+      keys: Object.keys(parsed),
+      sampleValues: Object.fromEntries(Object.entries(parsed).slice(0, 5))
+    })
+    return parsed
+  } catch (parseError) {
+    console.error("[Python ML Runner] JSON parse error:", parseError)
+    console.error("[Python ML Runner] Candidate line:", candidate)
+    throw new Error(`Failed to parse JSON from simulation_predictor.py: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
+  }
 }
 
 
