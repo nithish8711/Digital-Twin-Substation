@@ -23,4 +23,14 @@ export async function getSimulationVideoBucket(): Promise<GridFSBucket> {
   return new GridFSBucket(db, { bucketName: "simulationVideos" })
 }
 
+export async function getTestDb(): Promise<Db> {
+  const client = await getMongoClient()
+  return client.db("test")
+}
+
+export async function getCourseVideoBucket(): Promise<GridFSBucket> {
+  const db = await getTestDb()
+  return new GridFSBucket(db, { bucketName: "fs" })
+}
+
 

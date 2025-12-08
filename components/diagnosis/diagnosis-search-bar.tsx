@@ -60,7 +60,7 @@ export function DiagnosisSearchBar({
             type="button"
             onClick={handleSubmit}
             disabled={isLoading}
-            className="md:min-w-[160px]"
+          className="md:min-w-[160px] bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
           >
             {isLoading ? (
               <>

@@ -7,14 +7,26 @@ import { PRIMARY_COMPONENTS, COMPONENT_DEFINITIONS } from "@/lib/diagnosis/compo
 
 export function DiagnosisTopNav() {
   const { activeComponent, setActiveComponent } = useDiagnosisNav()
+  const palette = {
+    bayLines: "bg-blue-600 hover:bg-blue-700 text-white",
+    transformer: "bg-emerald-600 hover:bg-emerald-700 text-white",
+    circuitBreaker: "bg-purple-600 hover:bg-purple-700 text-white",
+    busbar: "bg-orange-500 hover:bg-orange-600 text-white",
+    isolator: "bg-teal-600 hover:bg-teal-700 text-white",
+    relay: "bg-slate-600 hover:bg-slate-700 text-white",
+    pmu: "bg-slate-600 hover:bg-slate-700 text-white",
+    gis: "bg-slate-600 hover:bg-slate-700 text-white",
+    battery: "bg-slate-600 hover:bg-slate-700 text-white",
+    environment: "bg-slate-600 hover:bg-slate-700 text-white",
+  } as const
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
       <div className="flex h-16 items-center gap-4 px-4">
         <div className="mr-4 hidden md:flex">
           <div className="flex items-center space-x-2">
-            <span className="hidden font-bold sm:inline-block text-xl tracking-tight text-black">
-              OCEANBERG <span className="text-black">DIGITAL TWIN</span>
+            <span className="hidden font-bold sm:inline-block text-xl tracking-tight">
+              OCEANBERG <span className="text-blue-600">DIGITAL TWIN</span>
             </span>
           </div>
         </div>
@@ -25,7 +37,7 @@ export function DiagnosisTopNav() {
                 key={key}
                 size="sm"
                 variant="default"
-                className={`shadow ${
+                className={`shadow ${palette[key]} ${
                   activeComponent === key ? "ring-2 ring-offset-2 ring-white" : ""
                 }`}
                 onClick={() => setActiveComponent(key)}

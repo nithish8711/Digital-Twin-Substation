@@ -179,6 +179,7 @@ export function SubstationList() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={isDeleting}
+              className="bg-white text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200"
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>

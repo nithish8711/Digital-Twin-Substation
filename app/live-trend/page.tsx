@@ -353,6 +353,7 @@ export default function LiveTrendPage() {
             <Button 
               onClick={handleSearch} 
               disabled={isLoading}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
             >
               {isLoading ? (
                 <>

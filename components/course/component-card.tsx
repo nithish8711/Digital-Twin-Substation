@@ -51,7 +51,7 @@ export function ComponentCard({
         <div className="flex gap-2 pt-2">
           <Button
             variant="default"
-            className="flex-1"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-md"
             onClick={onWatchCourse}
           >
             <Play className="h-4 w-4 mr-2" />
@@ -59,7 +59,10 @@ export function ComponentCard({
           </Button>
           <Button
             variant={canTakeQuiz ? "default" : "outline"}
-            className="flex-1"
+            className={cn(
+              "flex-1",
+              canTakeQuiz ? "bg-purple-600 hover:bg-purple-700 text-white shadow-md" : ""
+            )}
             onClick={onTakeQuiz}
             disabled={!canTakeQuiz}
           >

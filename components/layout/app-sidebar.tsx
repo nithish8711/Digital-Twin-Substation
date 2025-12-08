@@ -68,13 +68,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar collapsible="icon" className="bg-gradient-to-b from-slate-50 to-white border-r border-slate-200 shadow-lg" {...props}>
       <SidebarHeader className="h-16 flex items-center justify-center border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4">
         <div className="flex items-center gap-3 font-bold text-2xl group-data-[collapsible=icon]:hidden">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-black shadow-md">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
             <Cpu className="h-6 w-6 text-white" />
           </div>
-          <span className="text-black">OCEANBERG</span>
+          <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">OCEANBERG</span>
         </div>
         <div className="hidden group-data-[collapsible=icon]:block">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-black shadow-md">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
             <Cpu className="h-6 w-6 text-white" />
           </div>
         </div>
@@ -89,10 +89,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarMenuButton 
                   asChild 
                   tooltip={item.title} 
-                  className={cn(
-                    "h-auto",
-                    isActive && "[&:hover]:!bg-[#3A3A3A] [&:hover]:!text-white [&_a:hover]:!bg-[#3A3A3A] [&_a:hover]:!text-white"
-                  )}
+                  className="h-auto"
                 >
                   <a
                     href={item.url}
@@ -103,8 +100,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       "text-base font-semibold",
                       "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
                       isActive
-                        ? "bg-[#1A1A1A] text-white shadow-md hover:!bg-[#3A3A3A] hover:!text-white active:bg-[#0F0F0F]"
-                        : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200",
+                        ? cn(
+                            item.bgAccent,
+                            item.accent,
+                            "shadow-md border border-slate-200",
+                            item.hoverBg
+                          )
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200",
                     )}
                   >
                     <div className={cn(
@@ -116,13 +118,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       <item.icon className={cn(
                         "h-5 w-5 flex-shrink-0",
                         "group-data-[collapsible=icon]:h-5 group-data-[collapsible=icon]:w-5",
-                        isActive ? "text-white" : "text-slate-600"
+                        isActive ? item.accent : "text-slate-500"
                       )} />
                     </div>
                     <span className={cn(
                       "flex-1 truncate text-left",
-                      "group-data-[collapsible=icon]:hidden",
-                      isActive ? "text-white" : "text-slate-700"
+                      "group-data-[collapsible=icon]:hidden"
                     )}>{item.title}</span>
                   </a>
                 </SidebarMenuButton>
@@ -134,12 +135,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       <SidebarFooter className="bg-gradient-to-t from-slate-50 to-transparent p-4 border-t border-slate-200 space-y-3 group-data-[collapsible=icon]:p-2">
         <div className="flex items-center gap-3 p-2 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-200 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2">
-          <Avatar className="h-10 w-10 ring-2 ring-gray-200 flex-shrink-0">
-            <AvatarFallback className="bg-black text-white font-semibold shadow-md">JD</AvatarFallback>
+          <Avatar className="h-10 w-10 ring-2 ring-blue-100 flex-shrink-0">
+            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-semibold shadow-md">OC</AvatarFallback>
           </Avatar>
           <div className="flex-1 group-data-[collapsible=icon]:hidden">
-            <p className="text-sm font-semibold text-black">John Doe</p>
-            <p className="text-xs text-black">john.doe@oceanberg.com</p>
+            <p className="text-sm font-semibold text-gray-900">Oceanberg</p>
+            <p className="text-xs text-gray-500">Oceanberg@gmail.com</p>
           </div>
         </div>
 
@@ -147,7 +148,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             variant="ghost"
             size="sm"
-            className="flex-1 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center text-black hover:text-black hover:bg-gray-100 rounded-lg"
+            className="flex-1 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center text-gray-600 hover:text-gray-900 hover:bg-slate-100 rounded-lg"
           >
             <Settings className="h-4 w-4" />
             <span className="ml-2 group-data-[collapsible=icon]:hidden">Settings</span>
@@ -155,7 +156,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <Button
             variant="ghost"
             size="sm"
-            className="flex-1 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center text-black hover:text-black hover:bg-gray-100 rounded-lg"
+            className="flex-1 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
           >
             <LogOut className="h-4 w-4" />
             <span className="ml-2 group-data-[collapsible=icon]:hidden">Logout</span>

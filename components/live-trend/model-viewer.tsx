@@ -63,7 +63,6 @@ export function ModelViewer({
   timelineSnapshot = null,
   simulationProgress = 0,
 }: ModelViewerProps) {
-  const canUseFallback = (type: ViewerComponentType | undefined): type is ViewerComponentType => Boolean(type)
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
@@ -469,18 +468,14 @@ export function ModelViewer({
     }
 
     const loadFallbackModel = () => {
-      if (didCancel) return
-
-      if (!canUseFallback(componentType) || !sceneRef.current) {
-        safeSetState(setError, "3D model not available")
-        safeSetState(setHasModel, false)
-        safeSetState(setIsLoading, false)
-        safeSetState(setModelLoadAttempted, true)
-        return
-      }
+      if (didCancel || !sceneRef.current) return
 
       disposeCurrentModel()
-      const model = createFallbackModel(componentType, glowDataRef.current, showGlowRef.current)
+      // Use a lighter background so simple fallback geometry is visible
+      sceneRef.current.background = new THREE.Color(0xeef2f6)
+
+      const fallbackType: ViewerComponentType = componentType ?? "substation"
+      const model = createFallbackModel(fallbackType, glowDataRef.current, showGlowRef.current)
       sceneRef.current.add(model)
       modelRef.current = model
       ensureHudPanel()

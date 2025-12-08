@@ -137,7 +137,7 @@ export default function CreateSubstationPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
-                <Button variant="outline" className="justify-start h-14 px-4 bg-transparent" asChild>
+                <Button variant="outline" className="justify-start h-14 px-4 bg-white hover:bg-slate-50 border-slate-200 text-slate-800 shadow-sm" asChild>
                   <a href="#" className="flex items-center">
                     <div className="bg-orange-100 p-2 rounded mr-4">
                       <FileJson className="h-5 w-5 text-orange-600" />
@@ -148,7 +148,7 @@ export default function CreateSubstationPage() {
                     </div>
                   </a>
                 </Button>
-                <Button variant="outline" className="justify-start h-14 px-4 bg-transparent" asChild>
+                <Button variant="outline" className="justify-start h-14 px-4 bg-white hover:bg-slate-50 border-slate-200 text-slate-800 shadow-sm" asChild>
                   <a href="#" className="flex items-center">
                     <div className="bg-green-100 p-2 rounded mr-4">
                       <FileSpreadsheet className="h-5 w-5 text-green-600" />
