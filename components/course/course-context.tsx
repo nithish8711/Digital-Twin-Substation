@@ -37,15 +37,12 @@ const CourseContext = createContext<CourseContextType | undefined>(undefined)
 const STORAGE_KEY = "course-progress"
 
 function loadProgressFromStorage(): Record<ComponentType, ComponentProgress> {
-  if (typeof window === "undefined") {
-    return getInitialProgress()
-  }
+  if (typeof window === "undefined") return getInitialProgress()
 
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
       const parsed = JSON.parse(stored)
-      // Validate and merge with initial progress
       const initial = getInitialProgress()
       const merged: Record<ComponentType, ComponentProgress> = { ...initial }
 
@@ -112,11 +109,14 @@ function saveProgressToStorage(progress: Record<ComponentType, ComponentProgress
 }
 
 export function CourseProvider({ children }: { children: ReactNode }) {
-  const [progress, setProgress] = useState<Record<ComponentType, ComponentProgress>>(() =>
-    loadProgressFromStorage()
-  )
+  const [progress, setProgress] = useState<Record<ComponentType, ComponentProgress>>(getInitialProgress)
 
-  // Save to localStorage whenever progress changes
+  // Load once on mount to avoid state updates before the client is ready
+  useEffect(() => {
+    setProgress(loadProgressFromStorage())
+  }, [])
+
+  // Save to localStorage whenever progress changes (after initial load)
   useEffect(() => {
     saveProgressToStorage(progress)
   }, [progress])

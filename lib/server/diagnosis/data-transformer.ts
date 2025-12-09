@@ -126,15 +126,58 @@ export function transformToMLInput(
   const syntheticReadings = generateSyntheticReadings(component).readings
   
   // Helper function to get value: Firebase first, then synthetic for ML-required params only, then default
+  // Also checks for snake_case variants from IP address data
   const getMLValue = (uiKey: string, mlKey: string, defaultValue: number, isMLRequired: boolean) => {
-    // Always prefer Firebase value if available
+    // Always prefer Firebase value if available (check multiple key formats)
+    // 1. Check camelCase UI key (e.g., "oilTemp")
     if (liveReadings[uiKey] !== undefined && liveReadings[uiKey] !== null) {
       return liveReadings[uiKey]
     }
+    // 2. Check ML model key (e.g., "live_OilTemperature_C")
     if (liveReadings[mlKey] !== undefined && liveReadings[mlKey] !== null) {
       return liveReadings[mlKey]
     }
-    // Only use synthetic for ML-required parameters
+    // 3. Check snake_case variants from IP data (e.g., "oil_temp_c")
+    // Map common UI keys to their snake_case equivalents
+    const snakeCaseMap: Record<string, string[]> = {
+      oilTemp: ["oil_temp_c", "oilTemperature"],
+      windingTemp: ["winding_temp_c", "windingTemperature"],
+      loading: ["loading_percent", "loading"],
+      tapPosition: ["tap_position", "tapPosition"],
+      hydrogen: ["hydrogen_ppm", "hydrogen"],
+      acetylene: ["acetylene_ppm", "acetylene"],
+      moisture: ["moisture_ppm", "moisture"],
+      oilLevel: ["oil_level_percent", "oilLevel"],
+      busVoltage: ["bus_voltage_kv", "busVoltage"],
+      lineCurrent: ["line_current_a", "lineCurrent"],
+      mw: ["active_power_mw", "activePower"],
+      mvar: ["reactive_power_mvar", "reactivePower"],
+      powerFactor: ["power_factor", "powerFactor"],
+      frequency: ["frequency_hz", "frequency"],
+      voltageAngle: ["voltage_angle_deg", "voltageAngle"],
+      currentAngle: ["current_angle_deg", "currentAngle"],
+      rocof: ["rocof_hz_s", "rocof"],
+      thd: ["thd_percent", "thd"],
+      busCurrent: ["bus_current_a", "busCurrent"],
+      busTemperature: ["bus_temperature_c", "temperature"],
+      breakerStatus: ["breaker_status", "breakerStatus"],
+      operationTime: ["operation_time_ms", "operationTime"],
+      sf6Density: ["sf6_density_bar", "sf6Density"],
+      status: ["switchStatus", "status"],
+      driveTorque: ["drive_torque_nm", "driveTorque"],
+      operatingTime: ["operating_time_ms", "operatingTime"],
+      contactResistance: ["contact_resistance_uohm", "contactResistance"],
+      motorCurrent: ["motor_current_a", "motorCurrent"],
+    }
+    
+    const snakeCaseKeys = snakeCaseMap[uiKey] || []
+    for (const key of snakeCaseKeys) {
+      if (liveReadings[key] !== undefined && liveReadings[key] !== null) {
+        return liveReadings[key]
+      }
+    }
+    
+    // 4. Only use synthetic for ML-required parameters
     if (isMLRequired && syntheticReadings[uiKey] !== undefined) {
       const syntheticValue = syntheticReadings[uiKey]
       if (typeof syntheticValue === "number") {

@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       }
       
       const { isAdmin } = dbInfo
-      const basePathPrefix = "Madurai_West_Substation_AREA-728412"
+      const basePathPrefix = "Madurai_West_Substation"
       const uid = getFirebaseUID()
       const basePath = `${basePathPrefix}/${uid}`
       

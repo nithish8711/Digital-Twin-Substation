@@ -2,15 +2,18 @@
 
 import { useState } from "react"
 import { useLiveTrend } from "@/components/live-trend/live-trend-context"
-import { useLiveTrendReadings } from "@/hooks/use-live-trend-readings"
+import { useLiveTrendReadingsUnified } from "@/hooks/use-live-trend-readings-unified"
+import { useDataSource } from "@/lib/scada/data-source-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ParameterDetailSection } from "./parameter-detail-section"
 import { ParameterDisplay } from "./parameter-display"
 
 export function IsolatorPanel() {
   const { selectedArea } = useLiveTrend()
-  const areaCode = selectedArea?.areaCode || ""
-  const { readings, parameters, isLoading } = useLiveTrendReadings("isolator", areaCode)
+  const { dataSource } = useDataSource()
+  // In SCADA mode, areaCode is not required
+  const areaCode = dataSource === "scada" ? "SCADA" : (selectedArea?.areaCode || "")
+  const { readings, parameters, isLoading } = useLiveTrendReadingsUnified("isolator", areaCode)
   const [selectedParameter, setSelectedParameter] = useState<string | null>(null)
 
   return (

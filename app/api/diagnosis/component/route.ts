@@ -42,7 +42,327 @@ export async function POST(request: Request) {
   const areaCode = body.areaCode?.trim()
   const substationId = body.substationId?.trim() || areaCode
   const componentType = body.componentType?.trim()
+  const scadaData = body.scadaData // SCADA data passed directly from frontend
+  const ipData = body.ipData // IP address data with asset metadata
 
+  // If IP address data is provided (includes asset metadata), use it
+  // Check for assets at top level or master at top level or inside assets
+  const hasIpData = ipData && typeof ipData === "object" && (
+    ipData.assets || 
+    ipData.master || 
+    (ipData.assets && (ipData.assets as any).master)
+  )
+  
+  if (hasIpData) {
+    const component: DiagnosisComponentKey = isDiagnosisComponent(componentType) ? componentType : "bayLines"
+    const definition = COMPONENT_DEFINITIONS[component]
+    
+    try {
+      // Extract component-specific readings from IP data
+      // IP data uses PascalCase for component keys (BayLines, Transformer, etc.)
+      const componentKeyMap: Record<string, string> = {
+        bayLines: "BayLines",
+        transformer: "Transformer",
+        circuitBreaker: "CircuitBreaker",
+        busbar: "Busbar",
+        isolator: "Isolator",
+      }
+      
+      const componentKey = componentKeyMap[component] || component
+      const componentReadings = ipData[componentKey] || {}
+      
+      // IP data format includes both camelCase and snake_case field names
+      // Use component readings as live readings (both formats will be handled by transformToMLInput)
+      const liveReadings = componentReadings as Record<string, number | string>
+      const liveTimestamp = ipData.timestamp || new Date().toISOString()
+
+      // Extract asset metadata from IP data
+      const { extractAssetMetadataFromIpData } = await import("@/lib/scada/scada-adapter")
+      const assetMetadata = extractAssetMetadataFromIpData(ipData)
+      
+      // Log asset metadata extraction details
+      const hasMaster = !!(assetMetadata?.master && Object.keys(assetMetadata.master).length > 0)
+      const assetKeys = assetMetadata?.assets ? Object.keys(assetMetadata.assets) : []
+      const componentAsset = assetKeys.length > 0 ? assetMetadata.assets[assetKeys.find(k => 
+        k === "transformers" || k === "powerFlowLines" || k === "breakers" || 
+        k === "isolators" || k === "busbars"
+      ) || assetKeys[0]] : null
+      
+      console.log(`[Component API] Using IP address data for ${component}:`)
+      console.log(`  - Found ${Object.keys(liveReadings).length} parameter readings`)
+      console.log(`  - Asset metadata: master=${hasMaster ? 'yes' : 'no'}, assets=${assetKeys.length} collections`)
+      if (componentAsset) {
+        console.log(`  - Component asset found: ${Array.isArray(componentAsset) ? componentAsset.length : 1} asset(s)`)
+      }
+      
+      // Run ML prediction with IP data
+      console.log(`[Component API] Invoking ML predictor for ${component}...`)
+      const predictionStartTime = Date.now()
+      const prediction = await invokePredictor({
+        component,
+        areaCode: areaCode || "IP",
+        substationId: substationId || "IP",
+        liveReadings,
+        assetMetadata,
+      })
+      const predictionDuration = Date.now() - predictionStartTime
+      console.log(`[Component API] ML prediction completed in ${predictionDuration}ms`)
+
+      const parameterStates = definition.parameters.map((param) => {
+        const value = liveReadings?.[param.key] ?? null
+        const severity = evaluateSeverity(value as number | string | null, param)
+        return {
+          key: param.key,
+          label: param.label,
+          value,
+          unit: param.unit,
+          severity,
+          minAlarm: param.minAlarm,
+          maxAlarm: param.maxAlarm,
+        }
+      })
+
+      const liveSeverity =
+        parameterStates.reduce<DiagnosisSeverity>(
+          (acc, current) =>
+            severityRank.indexOf(current.severity) > severityRank.indexOf(acc) ? current.severity : acc,
+          "normal"
+        ) ?? "normal"
+
+      // Apply same adjustments as Firebase mode
+      const isIsolator = component === "isolator"
+      const faultProbabilityAdjustment = isIsolator ? 0.05 : 0.15
+      const healthIndexAdjustment = isIsolator ? 5 : 25
+      
+      const rawFaultProbability = prediction.fault_probability ?? 0.3
+      const rawXGBoostScore = prediction.XGBoost_FaultScore ?? 0
+      const rawHealthIndex = prediction.health_index ?? 70
+      const rawLSTMScore = prediction.LSTM_ForecastScore ?? 0
+      
+      const adjustedFaultProbability = Math.max(0, Math.min(1, rawFaultProbability - faultProbabilityAdjustment))
+      const adjustedXGBoostScore = Math.max(0, Math.min(1, rawXGBoostScore - faultProbabilityAdjustment))
+      const adjustedHealthIndex = Math.max(0, Math.min(100, rawHealthIndex + healthIndexAdjustment))
+      
+      let adjustedLSTMScore = rawLSTMScore
+      if (rawLSTMScore < 0) {
+        adjustedLSTMScore = rawLSTMScore * 0.8
+      }
+
+      const { score: _, breakdown } = deriveHealthMetrics({
+        pythonHealth: adjustedHealthIndex,
+        faultProbability: adjustedFaultProbability,
+        installationYear: assetMetadata?.master?.installationYear,
+        maintenanceCount: (assetMetadata?.maintenanceHistory ?? []).length,
+        parameterStates,
+        environmentReadings: component === "environment" ? liveReadings : undefined,
+      })
+
+      const maintenance = buildMaintenancePanel({
+        component,
+        assetMetadata,
+        parameterStates,
+        faultProbability: adjustedFaultProbability,
+        healthScore: adjustedHealthIndex,
+      })
+
+      const events = buildEventLog({
+        component: definition.title,
+        faultProbability: adjustedFaultProbability,
+        predictedFault: prediction.predicted_fault ?? "Normal",
+        parameterStates,
+      })
+
+      dispatchMaintenanceAlert({
+        substationId: substationId || "IP",
+        areaCode: areaCode || "IP",
+        componentType: component,
+        fault: prediction.predicted_fault ?? "Normal",
+        severity: liveSeverity,
+        faultProbability: adjustedFaultProbability,
+        healthIndex: adjustedHealthIndex,
+      }).catch((error) => {
+        console.warn("Unable to push maintenance alert", error)
+      })
+
+      return NextResponse.json({
+        component,
+        areaCode: areaCode || "IP",
+        substationId: substationId || "IP",
+        fault_probability: adjustedFaultProbability,
+        health_index: adjustedHealthIndex,
+        predicted_fault: prediction.predicted_fault,
+        affected_subpart: prediction.affected_subpart,
+        explanation: prediction.explanation,
+        timeline_prediction: (prediction.timeline_prediction || []).map((val: number) => 
+          val < 0 ? val * 0.8 : val
+        ),
+        live_readings: liveReadings,
+        asset_metadata: assetMetadata,
+        timestamp: liveTimestamp,
+        parameter_states: parameterStates,
+        live_status: liveSeverity,
+        maintenance,
+        health_breakdown: breakdown,
+        events,
+        trend_history: {},
+        live_source: "ip",
+        LSTM_ForecastScore: adjustedLSTMScore,
+        IsolationForestScore: prediction.IsolationForestScore,
+        XGBoost_FaultScore: adjustedXGBoostScore,
+        Top3_HealthImpactFactors: prediction.Top3_HealthImpactFactors,
+      })
+    } catch (error) {
+      console.error("[Component API] IP Data Diagnosis API failure:", error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error("[Component API] Error details:", {
+        component,
+        errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      return NextResponse.json({ 
+        error: "Unable to process IP data diagnosis request",
+        details: errorMessage 
+      }, { status: 500 })
+    }
+  }
+
+  // If SCADA data is provided, use it directly
+  if (scadaData && typeof scadaData === "object") {
+    const component: DiagnosisComponentKey = isDiagnosisComponent(componentType) ? componentType : "bayLines"
+    const definition = COMPONENT_DEFINITIONS[component]
+    
+    try {
+      // Use SCADA data directly as live readings
+      const liveReadings = scadaData as Record<string, number | string>
+      const liveTimestamp = new Date().toISOString()
+
+      // Fetch asset metadata from Firebase (required for ML predictions)
+      // Try to use a default area code if SCADA mode doesn't provide one
+      // You can configure this to use a specific substation code
+      const metadataAreaCode = substationId ?? areaCode ?? "AREA-728412" // Default to Madurai West Substation
+      const assetMetadata = await fetchAssetMetadata(metadataAreaCode)
+      
+      // Run ML prediction with SCADA data
+      const prediction = await invokePredictor({
+        component,
+        areaCode: areaCode || "SCADA",
+        substationId: substationId || "SCADA",
+        liveReadings,
+        assetMetadata,
+      })
+
+      console.log(`[Component API] Using SCADA data for ${component}, found ${Object.keys(liveReadings).length} parameters`)
+
+      const parameterStates = definition.parameters.map((param) => {
+        const value = liveReadings?.[param.key] ?? null
+        const severity = evaluateSeverity(value as number | string | null, param)
+        return {
+          key: param.key,
+          label: param.label,
+          value,
+          unit: param.unit,
+          severity,
+          minAlarm: param.minAlarm,
+          maxAlarm: param.maxAlarm,
+        }
+      })
+
+      const liveSeverity =
+        parameterStates.reduce<DiagnosisSeverity>(
+          (acc, current) =>
+            severityRank.indexOf(current.severity) > severityRank.indexOf(acc) ? current.severity : acc,
+          "normal"
+        ) ?? "normal"
+
+      // Apply same adjustments as Firebase mode
+      const isIsolator = component === "isolator"
+      const faultProbabilityAdjustment = isIsolator ? 0.05 : 0.15
+      const healthIndexAdjustment = isIsolator ? 5 : 25
+      
+      const rawFaultProbability = prediction.fault_probability ?? 0.3
+      const rawXGBoostScore = prediction.XGBoost_FaultScore ?? 0
+      const rawHealthIndex = prediction.health_index ?? 70
+      const rawLSTMScore = prediction.LSTM_ForecastScore ?? 0
+      
+      const adjustedFaultProbability = Math.max(0, Math.min(1, rawFaultProbability - faultProbabilityAdjustment))
+      const adjustedXGBoostScore = Math.max(0, Math.min(1, rawXGBoostScore - faultProbabilityAdjustment))
+      const adjustedHealthIndex = Math.max(0, Math.min(100, rawHealthIndex + healthIndexAdjustment))
+      
+      let adjustedLSTMScore = rawLSTMScore
+      if (rawLSTMScore < 0) {
+        adjustedLSTMScore = rawLSTMScore * 0.8
+      }
+
+      const { score: _, breakdown } = deriveHealthMetrics({
+        pythonHealth: adjustedHealthIndex,
+        faultProbability: adjustedFaultProbability,
+        installationYear: assetMetadata?.master?.installationYear,
+        maintenanceCount: (assetMetadata?.maintenanceHistory ?? []).length,
+        parameterStates,
+        environmentReadings: component === "environment" ? liveReadings : undefined,
+      })
+
+      const maintenance = buildMaintenancePanel({
+        component,
+        assetMetadata,
+        parameterStates,
+        faultProbability: adjustedFaultProbability,
+        healthScore: adjustedHealthIndex,
+      })
+
+      const events = buildEventLog({
+        component: definition.title,
+        faultProbability: adjustedFaultProbability,
+        predictedFault: prediction.predicted_fault ?? "Normal",
+        parameterStates,
+      })
+
+      dispatchMaintenanceAlert({
+        substationId: substationId || "SCADA",
+        areaCode: areaCode || "SCADA",
+        componentType: component,
+        fault: prediction.predicted_fault ?? "Normal",
+        severity: liveSeverity,
+        faultProbability: adjustedFaultProbability,
+        healthIndex: adjustedHealthIndex,
+      }).catch((error) => {
+        console.warn("Unable to push maintenance alert", error)
+      })
+
+      return NextResponse.json({
+        component,
+        areaCode: areaCode || "SCADA",
+        substationId: substationId || "SCADA",
+        fault_probability: adjustedFaultProbability,
+        health_index: adjustedHealthIndex,
+        predicted_fault: prediction.predicted_fault,
+        affected_subpart: prediction.affected_subpart,
+        explanation: prediction.explanation,
+        timeline_prediction: (prediction.timeline_prediction || []).map((val: number) => 
+          val < 0 ? val * 0.8 : val
+        ),
+        live_readings: liveReadings,
+        asset_metadata: assetMetadata,
+        timestamp: liveTimestamp,
+        parameter_states: parameterStates,
+        live_status: liveSeverity,
+        maintenance,
+        health_breakdown: breakdown,
+        events,
+        trend_history: {},
+        live_source: "scada",
+        LSTM_ForecastScore: adjustedLSTMScore,
+        IsolationForestScore: prediction.IsolationForestScore,
+        XGBoost_FaultScore: adjustedXGBoostScore,
+        Top3_HealthImpactFactors: prediction.Top3_HealthImpactFactors,
+      })
+    } catch (error) {
+      console.error("SCADA Diagnosis API failure", error)
+      return NextResponse.json({ error: "Unable to process SCADA diagnosis request" }, { status: 500 })
+    }
+  }
+
+  // Firebase mode - original logic
   if (!areaCode) {
     return NextResponse.json({ error: "areaCode is required" }, { status: 400 })
   }
@@ -52,16 +372,94 @@ export async function POST(request: Request) {
 
   try {
     // Initialize cache if not already done
-    const cachedTimestamp = getLatestCachedTimestamp()
+    let cachedTimestamp = getLatestCachedTimestamp()
     if (!cachedTimestamp) {
       console.log("[Component API] Cache not initialized, initializing...")
       await initializeCache(areaCode)
+      cachedTimestamp = getLatestCachedTimestamp()
     }
 
-    // Get readings from cache instead of fetching from Firebase
-    const cachedReadings = getCachedReadings(component)
-    const liveReadings = cachedReadings || {}
-    const liveTimestamp = getLatestCachedTimestamp() || new Date().toISOString()
+    // Check for new timestamp and update cache if needed (ensures we use latest readings)
+    const { getRealtimeDB, getLatestTimestampClient } = await import("@/lib/server/diagnosis/live-data-service")
+    const { initializeFirebaseAuth, getFirebaseUID } = await import("@/lib/firebase")
+    const { updateCacheForNewTimestamp } = await import("@/lib/server/diagnosis/readings-cache")
+    
+    try {
+      await initializeFirebaseAuth()
+      const dbInfo = getRealtimeDB()
+      if (dbInfo) {
+        const { isAdmin } = dbInfo
+        const basePathPrefix = "Madurai_West_Substation"
+        const uid = getFirebaseUID()
+        const basePath = `${basePathPrefix}/${uid}`
+        const latestTimestamp = await getLatestTimestampClient(basePath, isAdmin)
+        
+        // If we have a new timestamp, update cache before making prediction
+        if (latestTimestamp && latestTimestamp !== cachedTimestamp) {
+          console.log(`[Component API] New timestamp detected: ${latestTimestamp}, updating cache...`)
+          const cacheUpdated = await updateCacheForNewTimestamp(latestTimestamp, areaCode)
+          if (cacheUpdated) {
+            cachedTimestamp = latestTimestamp
+            console.log(`[Component API] Cache updated successfully for timestamp ${latestTimestamp}`)
+          } else {
+            console.warn(`[Component API] Cache update failed for timestamp ${latestTimestamp}`)
+          }
+        }
+      }
+    } catch (error) {
+      // Silently fail - use existing cache if timestamp check fails
+      console.debug("[Component API] Timestamp check failed, using existing cache:", error)
+    }
+
+    // Get readings from cache (now updated with latest if available)
+    // Use the latest timestamp we just checked/updated (cachedTimestamp was updated above if new timestamp found)
+    const finalTimestamp = getLatestCachedTimestamp() || cachedTimestamp
+    let cachedReadings = getCachedReadings(component, finalTimestamp)
+    
+    // If no readings found, try to get from latest timestamp without specifying
+    if (!cachedReadings || Object.keys(cachedReadings).length === 0) {
+      console.warn(`[Component API] No readings found for ${component} at timestamp ${finalTimestamp}, trying latest cached timestamp`)
+      cachedReadings = getCachedReadings(component)
+    }
+    
+    let liveReadings = cachedReadings || {}
+    const liveTimestamp = finalTimestamp || new Date().toISOString()
+    
+    console.log(`[Component API] Using readings for ${component} at timestamp ${liveTimestamp}, found ${Object.keys(liveReadings).length} parameters:`, Object.keys(liveReadings))
+    if (Object.keys(liveReadings).length === 0) {
+      console.warn(`[Component API] WARNING: No readings found in cache for ${component}. Cache status: latestTimestamp=${getLatestCachedTimestamp()}, cachedTimestamp=${cachedTimestamp}`)
+      // Try to initialize cache if it's empty
+      if (!getLatestCachedTimestamp()) {
+        console.log(`[Component API] Cache is empty, initializing...`)
+        await initializeCache(areaCode)
+        const newCachedReadings = getCachedReadings(component)
+        if (newCachedReadings && Object.keys(newCachedReadings).length > 0) {
+          liveReadings = newCachedReadings
+          console.log(`[Component API] Successfully initialized cache, now have ${Object.keys(liveReadings).length} parameters`)
+        }
+      } else {
+        // Cache exists but no readings for this component - try to fetch directly
+        console.log(`[Component API] Cache exists but no readings for ${component}, fetching directly from Firebase...`)
+        try {
+          const { fetchReadingsFromFirebaseClient } = await import("@/lib/server/diagnosis/live-data-service")
+          await initializeFirebaseAuth()
+          const dbInfo = getRealtimeDB()
+          if (dbInfo) {
+            const { isAdmin } = dbInfo
+            const basePathPrefix = "Madurai_West_Substation"
+            const uid = getFirebaseUID()
+            const basePath = `${basePathPrefix}/${uid}`
+            const directReadings = await fetchReadingsFromFirebaseClient(basePath, finalTimestamp, component, isAdmin)
+            if (directReadings && Object.keys(directReadings).length > 0) {
+              liveReadings = directReadings
+              console.log(`[Component API] Successfully fetched readings directly, now have ${Object.keys(liveReadings).length} parameters`)
+            }
+          }
+        } catch (error) {
+          console.error(`[Component API] Failed to fetch readings directly:`, error)
+        }
+      }
+    }
 
     // Fetch asset metadata (this is separate from readings)
     const assetMetadata = await fetchAssetMetadata(substationId ?? areaCode)
@@ -73,8 +471,12 @@ export async function POST(request: Request) {
       assetMetadata,
     })
 
+    console.log(`[Component API] Creating parameterStates for ${component}, liveReadings keys:`, Object.keys(liveReadings))
     const parameterStates = definition.parameters.map((param) => {
       const value = liveReadings?.[param.key] ?? null
+      if (value === null || value === undefined) {
+        console.warn(`[Component API] Parameter ${param.key} not found in liveReadings for ${component}`)
+      }
       const severity = evaluateSeverity(value as number | string | null, param)
       return {
         key: param.key,
@@ -86,6 +488,7 @@ export async function POST(request: Request) {
         maxAlarm: param.maxAlarm,
       }
     })
+    console.log(`[Component API] Created ${parameterStates.length} parameterStates, ${parameterStates.filter(p => p.value !== null).length} have values`)
 
     const liveSeverity =
       parameterStates.reduce<DiagnosisSeverity>(

@@ -288,7 +288,7 @@ export const PARAMETER_METADATA: Record<string, ParameterMetadata> = {
     useCase: "Thermal management"
   },
 
-  // Bay Lines & Power Lines Parameters
+  // Bays & Power Lines Parameters
   ctLoading: {
     name: "CT Loading",
     meaning: "Current Transformer loading as percentage of rated capacity",

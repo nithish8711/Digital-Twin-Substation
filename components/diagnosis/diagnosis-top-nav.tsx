@@ -37,7 +37,7 @@ export function DiagnosisTopNav() {
                 key={key}
                 size="sm"
                 variant="default"
-                className={`shadow ${palette[key]} ${
+                className={`w-28 shadow ${palette[key]} ${
                   activeComponent === key ? "ring-2 ring-offset-2 ring-white" : ""
                 }`}
                 onClick={() => setActiveComponent(key)}

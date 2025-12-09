@@ -32,6 +32,32 @@ export function VideoPlayer({
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const onProgressRef = useRef(onProgress)
+  const onCompleteRef = useRef(onComplete)
+
+  // Keep refs in sync with props
+  useEffect(() => {
+    onProgressRef.current = onProgress
+    onCompleteRef.current = onComplete
+  }, [onProgress, onComplete])
+
+  // Reset state when video URL changes
+  useEffect(() => {
+    const videoElement = videoRef.current
+    if (!videoElement) return
+
+    // Pause and reset video when URL changes
+    videoElement.pause()
+    setIsPlaying(false)
+    setIsLoading(true)
+    setError(null)
+    setIsCompleted(false)
+    setCurrentTime(0)
+    setDuration(0)
+    
+    // Reload video to apply new source
+    videoElement.load()
+  }, [video.url])
 
   useEffect(() => {
     const videoElement = videoRef.current
@@ -51,24 +77,29 @@ export function VideoPlayer({
       const progress = (videoElement.currentTime / videoElement.duration) * 100
       setCurrentTime(videoElement.currentTime)
 
-      if (onProgress) {
-        onProgress(progress)
+      if (onProgressRef.current) {
+        onProgressRef.current(progress)
       }
 
       // Check if video is complete (95% threshold)
-      if (progress >= 95 && !isCompleted) {
-        setIsCompleted(true)
-        if (onComplete) {
-          onComplete()
-        }
+      if (progress >= 95) {
+        setIsCompleted((prev) => {
+          if (!prev) {
+            if (onCompleteRef.current) {
+              onCompleteRef.current()
+            }
+            return true
+          }
+          return prev
+        })
       }
     }
 
     const handleEnded = () => {
       setIsPlaying(false)
       setIsCompleted(true)
-      if (onComplete) {
-        onComplete()
+      if (onCompleteRef.current) {
+        onCompleteRef.current()
       }
     }
 
@@ -153,21 +184,76 @@ export function VideoPlayer({
       videoElement.removeEventListener("stalled", handleStalled)
       videoElement.removeEventListener("suspend", handleSuspend)
     }
-  }, [initialProgress, onProgress, onComplete, isCompleted])
+  }, [initialProgress])
 
   const togglePlay = async () => {
     const videoElement = videoRef.current
     if (!videoElement) return
+
+    // Check if element is still in the DOM
+    if (!videoElement.isConnected) {
+      console.warn("Video element is not connected to DOM")
+      return
+    }
 
     if (isPlaying) {
       videoElement.pause()
       setIsPlaying(false)
     } else {
       try {
-        await videoElement.play()
-        setIsPlaying(true)
-        setError(null)
-      } catch (err) {
+        // Check if video is ready to play
+        if (videoElement.readyState < 2) {
+          // Wait for video to be ready
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error("Video loading timeout"))
+            }, 10000) // 10 second timeout
+
+            const handleCanPlay = () => {
+              clearTimeout(timeout)
+              videoElement.removeEventListener("canplay", handleCanPlay)
+              videoElement.removeEventListener("error", handleError)
+              resolve()
+            }
+
+            const handleError = () => {
+              clearTimeout(timeout)
+              videoElement.removeEventListener("canplay", handleCanPlay)
+              videoElement.removeEventListener("error", handleError)
+              reject(new Error("Video loading error"))
+            }
+
+            if (videoElement.readyState >= 2) {
+              clearTimeout(timeout)
+              resolve()
+            } else {
+              videoElement.addEventListener("canplay", handleCanPlay)
+              videoElement.addEventListener("error", handleError)
+            }
+          })
+        }
+
+        // Double-check element is still connected before playing
+        if (!videoElement.isConnected) {
+          console.warn("Video element disconnected before play")
+          return
+        }
+
+        const playPromise = videoElement.play()
+        
+        if (playPromise !== undefined) {
+          await playPromise
+          setIsPlaying(true)
+          setError(null)
+        }
+      } catch (err: any) {
+        // Handle AbortError specifically (happens when video is removed/changed)
+        if (err.name === "AbortError" || err.message?.includes("abort")) {
+          console.warn("Video play was aborted (element may have been removed)")
+          setIsPlaying(false)
+          return
+        }
+        
         console.error("Error playing video:", err)
         setError("Failed to play video. Please check if the video source is available.")
         setIsPlaying(false)
@@ -226,9 +312,9 @@ export function VideoPlayer({
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <div className={cn("relative w-full bg-black rounded-lg overflow-hidden", className)}>
+    <div className={cn("relative w-full bg-black rounded-xl overflow-hidden shadow-lg", className)}>
       {/* Video Container */}
-      <div className="relative aspect-video bg-black">
+      <div className="relative aspect-video bg-gradient-to-br from-gray-900 to-black">
         {video.url.includes("youtube.com") || video.url.includes("youtu.be") ? (
           <iframe
             src={video.url}
@@ -241,31 +327,49 @@ export function VideoPlayer({
           <>
             <video
               ref={videoRef}
-              className="w-full h-full"
+              className="w-full h-full rounded-xl"
               poster={video.thumbnail}
               onClick={togglePlay}
               controls
               preload="metadata"
-              crossOrigin="anonymous"
               playsInline
             >
-              <source src={video.url} type="video/mp4" />
               <source src={video.url} type="video/webm" />
+              <source src={video.url} type="video/mp4" />
               Your browser does not support the video tag.
             </video>
             {isLoading && !error && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white">
-                <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                  <p className="text-sm">Loading video...</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white rounded-xl">
+                <div className="text-center space-y-4">
+                  <div className="relative">
+                    <Loader2 className="h-12 w-12 animate-spin mx-auto text-blue-500" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-base font-medium">Loading video...</p>
+                    <div className="flex gap-1 justify-center">
+                      <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                      <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                      <div className="h-2 w-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
             {error && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white p-4 z-10">
-                <div className="text-center">
-                  <p className="text-lg font-semibold mb-2">Video Error</p>
-                  <p className="text-sm mb-4">{error}</p>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/90 text-white p-6 z-10 rounded-xl">
+                <div className="text-center max-w-md space-y-4">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-500/20 mb-2">
+                    <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold mb-2">Video Error</p>
+                    <p className="text-sm text-gray-300 mb-4">{error}</p>
+                  </div>
                   <div className="flex gap-2 justify-center">
                     <Button
                       onClick={() => {
@@ -276,6 +380,7 @@ export function VideoPlayer({
                         }
                       }}
                       variant="secondary"
+                      className="bg-white text-gray-900 hover:bg-gray-100"
                     >
                       Retry
                     </Button>
@@ -298,6 +403,7 @@ export function VideoPlayer({
                         }
                       }}
                       variant="outline"
+                      className="border-gray-600 text-white hover:bg-gray-800"
                     >
                       Check Source
                     </Button>
@@ -337,7 +443,7 @@ export function VideoPlayer({
 
       {/* Custom Controls (for non-YouTube videos) */}
       {!video.url.includes("youtube.com") && !video.url.includes("youtu.be") && (
-        <div className="bg-gray-900 text-white p-4 space-y-3">
+        <div className="bg-gray-900 text-white p-4 space-y-3 rounded-b-xl">
           {/* Progress Bar */}
           <div
             className="relative h-2 bg-gray-700 rounded-full cursor-pointer group"
@@ -404,14 +510,6 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Video Info */}
-      <div className="p-4 bg-white border-t">
-        <h3 className="font-semibold text-lg mb-2">{video.title}</h3>
-        <p className="text-sm text-gray-600">{video.description}</p>
-        {duration > 0 && (
-          <p className="text-xs text-gray-500 mt-2">Duration: {formatTime(duration)}</p>
-        )}
-      </div>
     </div>
   )
 }

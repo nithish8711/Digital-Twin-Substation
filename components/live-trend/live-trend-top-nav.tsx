@@ -8,7 +8,7 @@ export function LiveTrendTopNav() {
   
   const navButtons = [
     { id: "substation", label: "Substation", color: "bg-blue-600 hover:bg-blue-700 text-white" },
-    { id: "bayLines", label: "Bay Lines", color: "bg-emerald-600 hover:bg-emerald-700 text-white" },
+    { id: "bayLines", label: "Bays", color: "bg-emerald-600 hover:bg-emerald-700 text-white" },
     { id: "transformer", label: "Transformer", color: "bg-orange-600 hover:bg-orange-700 text-white" },
     { id: "circuitBreaker", label: "Circuit Breaker", color: "bg-purple-600 hover:bg-purple-700 text-white" },
     { id: "busbar", label: "Busbar", color: "bg-orange-500 hover:bg-orange-600 text-white" },
@@ -31,7 +31,7 @@ export function LiveTrendTopNav() {
               <Button
                 key={button.id}
                 variant="default"
-                className={`shadow-md transition-all ${button.color} ${
+                className={`w-32 shadow-md transition-all ${button.color} ${
                   activeCategory === button.id ? "ring-2 ring-offset-2 ring-white" : ""
                 }`}
                 onClick={() => setActiveCategory(button.id)}

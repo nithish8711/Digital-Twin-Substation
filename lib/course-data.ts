@@ -188,14 +188,14 @@ export const courseData: ComponentCourse[] = [
   },
   {
     id: "bayLines",
-    name: "Bay Lines Components",
-    description: "Learn about CT and VT components in bay lines",
+    name: "Bays Components",
+    description: "Learn about CT and VT components in bays",
     icon: "🔌",
     videos: [
       {
         id: "baylines-wp",
         type: "workingPrinciple",
-        title: "Bay Lines Components Working Principle",
+        title: "Bays Components Working Principle",
         description: "Understanding CT and VT principles, electromagnetic induction, and voltage/current transformation",
         url: "/api/course-video?componentId=bayLines&videoType=workingPrinciple",
         thumbnail: "/placeholder.jpg",
@@ -204,7 +204,7 @@ export const courseData: ComponentCourse[] = [
       {
         id: "baylines-op",
         type: "operation",
-        title: "Bay Lines Components Operation",
+        title: "Bays Components Operation",
         description: "CT and VT operation, burden, accuracy classes, connection methods, and safety protocols",
         url: "/api/course-video?componentId=bayLines&videoType=operation",
         thumbnail: "/placeholder.jpg",

@@ -20,7 +20,7 @@ export function ComponentSelectorNav() {
             value="bayLines"
             className="bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:border-emerald-600"
           >
-            Bay Lines
+            Bays
           </TabsTrigger>
           <TabsTrigger 
             value="circuitBreaker"

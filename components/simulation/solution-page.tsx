@@ -47,7 +47,7 @@ import {
 
 const COMPONENT_LABELS: Record<SimulationData["componentType"], string> = {
   transformer: "Transformer",
-  bayLines: "Bay Line",
+  bayLines: "Bay",
   circuitBreaker: "Circuit Breaker",
   isolator: "Isolator",
   busbar: "Busbar",

@@ -1,11 +1,8 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Trophy, Lock, CheckCircle2, ArrowRight } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Progress } from "@/components/ui/progress"
+import { Trophy } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ComponentCard } from "@/components/course/component-card"
 import { useCourse } from "@/components/course/course-context"
 import { courseData } from "@/lib/course-data"
@@ -13,10 +10,7 @@ import type { ComponentType } from "@/lib/course-data"
 
 export default function CoursePage() {
   const router = useRouter()
-  const { progress, isSimulationUnlocked, getOverallProgress } = useCourse()
-
-  const overallProgress = getOverallProgress()
-  const simulationUnlocked = isSimulationUnlocked()
+  const { progress } = useCourse()
 
   const handleWatchCourse = (componentId: ComponentType) => {
     router.push(`/resources/${componentId}`)
@@ -28,54 +22,6 @@ export default function CoursePage() {
 
   return (
     <div className="min-h-[calc(100vh-8rem)] space-y-6">
-      {/* Header Section */}
-      <div className="space-y-4">
-        {/* Overall Progress Card */}
-        <Card className="bg-gradient-to-r from-sky-50 to-blue-50 border-sky-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Overall Progress</h3>
-                <p className="text-sm text-gray-600">Complete all courses to unlock Real-time Digital Twin Simulation</p>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-sky-600">{overallProgress}%</div>
-                <div className="text-sm text-gray-600">
-                  {Object.values(progress).filter((p) => p.status === "completed").length} / {Object.keys(progress).length} Completed
-                </div>
-              </div>
-            </div>
-            <Progress value={overallProgress} className="h-3" />
-          </CardContent>
-        </Card>
-
-        {/* Simulation Unlock Alert */}
-        {simulationUnlocked ? (
-          <Alert className="bg-green-50 border-green-200">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">Congratulations! You've unlocked Real-time Digital Twin Simulation.</span>
-                <Button
-                  onClick={() => router.push("/simulation")}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  Go to Simulation
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert className="bg-amber-50 border-amber-200">
-            <Lock className="h-4 w-4 text-amber-600" />
-            <AlertDescription className="text-amber-800">
-              Complete all component courses and pass their quizzes to unlock Real-time Digital Twin Simulation.
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
-
       {/* Components Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {courseData.map((course) => {

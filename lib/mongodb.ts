@@ -29,8 +29,8 @@ export async function getTestDb(): Promise<Db> {
 }
 
 export async function getCourseVideoBucket(): Promise<GridFSBucket> {
-  const db = await getTestDb()
-  return new GridFSBucket(db, { bucketName: "fs" })
+  const db = await getMongoDb()
+  return new GridFSBucket(db, { bucketName: "courseVideos" })
 }
 
 

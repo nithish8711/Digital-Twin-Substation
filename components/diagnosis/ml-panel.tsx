@@ -6,6 +6,11 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { COMPONENT_DEFINITIONS } from "@/lib/diagnosis/component-config"
 import type { DiagnosisComponentKey } from "@/lib/diagnosis/types"
+import {
+  getCombinedFaultProbabilityColor,
+  getCombinedFaultProbabilityTextClass,
+} from "@/lib/simulation-color-coding"
+import { cn } from "@/lib/utils"
 
 const modelIcons = {
   lstm: Brain,
@@ -132,28 +137,29 @@ export function MLPanel({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm text-slate-500">Combined Fault Probability</p>
-              <p className="text-3xl font-semibold text-slate-900">{combinedScore}%</p>
+              <p className={cn("text-3xl font-semibold", getCombinedFaultProbabilityTextClass(faultProbability))}>
+                {combinedScore}%
+              </p>
             </div>
             <Badge
-              className={
-                combinedScore > 70
-                  ? "bg-red-100 text-red-700"
-                  : combinedScore > 50
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-emerald-100 text-emerald-700"
-              }
+              style={{
+                backgroundColor: `${getCombinedFaultProbabilityColor(faultProbability)}20`,
+                color: getCombinedFaultProbabilityColor(faultProbability),
+              }}
             >
-              {combinedScore > 70 ? "Critical" : combinedScore > 50 ? "Caution" : "Stable"}
+              {faultProbability > 0.75 ? "Critical Failure Expected" : faultProbability > 0.50 ? "Danger" : faultProbability > 0.25 ? "Caution" : "Safe"}
             </Badge>
           </div>
           <div className="mt-3 rounded-lg bg-blue-50 p-3 text-xs text-slate-700">
             <p className="font-semibold mb-1">What this means:</p>
             <p>
-              {combinedScore > 70 
-                ? "Critical fault probability indicates immediate attention is required. The ML models have detected multiple warning signals suggesting potential equipment failure. Recommended actions: Schedule emergency inspection, review maintenance logs, and prepare contingency plans."
-                : combinedScore > 50
-                  ? "Caution level indicates elevated risk that warrants monitoring. The system has identified anomalies that could lead to faults if not addressed. Recommended actions: Increase monitoring frequency, review recent operational parameters, and plan preventive maintenance."
-                  : "Stable condition indicates normal operation with low fault probability. The equipment is functioning within expected parameters. Continue routine monitoring and scheduled maintenance."}
+              {faultProbability > 0.75
+                ? "Critical Failure Expected: Immediate attention is required. The ML models have detected multiple warning signals suggesting potential equipment failure. Recommended actions: Schedule emergency inspection, review maintenance logs, and prepare contingency plans."
+                : faultProbability > 0.50
+                  ? "Danger: Elevated risk that warrants monitoring. The system has identified anomalies that could lead to faults if not addressed. Recommended actions: Increase monitoring frequency, review recent operational parameters, and plan preventive maintenance."
+                  : faultProbability > 0.25
+                    ? "Caution: Moderate risk level. The equipment shows some signs that require attention. Recommended actions: Monitor closely and schedule preventive maintenance."
+                    : "Safe: Normal operation with low fault probability. The equipment is functioning within expected parameters. Continue routine monitoring and scheduled maintenance."}
             </p>
           </div>
         </div>
