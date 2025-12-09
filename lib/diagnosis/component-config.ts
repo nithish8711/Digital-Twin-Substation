@@ -2,7 +2,7 @@ import type { ComponentDefinition, DiagnosisComponentKey } from "./types"
 
 export const COMPONENT_DEFINITIONS: Record<DiagnosisComponentKey, ComponentDefinition> = {
   bayLines: {
-    title: "Bay Lines",
+    title: "Bays",
     description: "Power flow health across each outgoing feeder and bus section.",
     category: "primary",
     parameters: [

@@ -2,15 +2,18 @@
 
 import { useState } from "react"
 import { useLiveTrend } from "@/components/live-trend/live-trend-context"
-import { useLiveTrendReadings } from "@/hooks/use-live-trend-readings"
+import { useLiveTrendReadingsUnified } from "@/hooks/use-live-trend-readings-unified"
+import { useDataSource } from "@/lib/scada/data-source-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ParameterDetailSection } from "./parameter-detail-section"
 import { ParameterDisplay } from "./parameter-display"
 
 export function BayLinesPanel() {
   const { selectedArea } = useLiveTrend()
-  const areaCode = selectedArea?.areaCode || ""
-  const { readings, parameters, isLoading } = useLiveTrendReadings("bayLines", areaCode)
+  const { dataSource } = useDataSource()
+  // In SCADA mode, areaCode is not required
+  const areaCode = dataSource === "scada" ? "SCADA" : (selectedArea?.areaCode || "")
+  const { readings, parameters, isLoading } = useLiveTrendReadingsUnified("bayLines", areaCode)
   const [selectedParameter, setSelectedParameter] = useState<string | null>(null)
 
   const handleToggle = (key: string) => {
@@ -20,7 +23,7 @@ export function BayLinesPanel() {
   return (
     <Card className="h-full overflow-hidden flex flex-col">
       <CardHeader className="flex-shrink-0">
-        <CardTitle>Bay Lines Live Parameters</CardTitle>
+        <CardTitle>Bays Live Parameters</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         {isLoading ? (

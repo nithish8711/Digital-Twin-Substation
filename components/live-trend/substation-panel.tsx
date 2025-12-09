@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { useLiveTrend } from "@/components/live-trend/live-trend-context"
-import { useAllFirebaseReadings } from "@/hooks/use-all-firebase-readings"
+import { useAllReadings } from "@/hooks/use-all-readings"
+import { useDataSource } from "@/lib/scada/data-source-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ParameterDetailSection } from "./parameter-detail-section"
 import { ParameterDisplay } from "./parameter-display"
@@ -11,8 +12,10 @@ import type { DiagnosisComponentKey } from "@/lib/diagnosis/types"
 
 export function SubstationPanel() {
   const { selectedArea } = useLiveTrend()
-  const areaCode = selectedArea?.areaCode || ""
-  const { allReadings, isLoading } = useAllFirebaseReadings(areaCode)
+  const { dataSource } = useDataSource()
+  // In SCADA mode, areaCode is not required
+  const areaCode = dataSource === "scada" ? "SCADA" : (selectedArea?.areaCode || "")
+  const { allReadings, isLoading } = useAllReadings(areaCode)
   const [selectedParameter, setSelectedParameter] = useState<string | null>(null)
 
   // Combine all component readings into a flat list

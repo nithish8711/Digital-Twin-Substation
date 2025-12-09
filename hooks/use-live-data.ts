@@ -60,6 +60,7 @@ export function useLiveData<T extends Record<string, number | string>>(
   })
   const liveTrendContext = useLiveTrend(true)
   const selectedAreaKey = liveTrendContext?.selectedArea?.key?.trim() ?? null
+  const selectedAreaCode = liveTrendContext?.selectedArea?.areaCode?.trim() ?? null
 
   // Generate baseline synthetic values continuously (acts as placeholder + fills gaps)
   useEffect(() => {
@@ -79,7 +80,86 @@ export function useLiveData<T extends Record<string, number | string>>(
 
   // Overlay realtime Firebase readings whenever an area is selected
   useEffect(() => {
-    if (!selectedAreaKey || typeof window === "undefined" || !realtimeDB) {
+    if (!selectedAreaKey || typeof window === "undefined") {
+      queueMicrotask(() => {
+        setRealtimeState({ key: null, data: {} })
+      })
+      return
+    }
+
+    // For "others" category, fetch from API endpoint that combines all sub-components
+    if (category === "others") {
+      if (!selectedAreaCode) {
+        queueMicrotask(() => {
+          setRealtimeState({ key: null, data: {} })
+        })
+        return
+      }
+      
+      const fetchOthersData = async () => {
+        try {
+          // Fetch latest timestamp first
+          const timestampResponse = await fetch("/api/diagnosis/timestamp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ areaCode: selectedAreaCode }),
+          })
+          
+          let targetTimestamp: string | null = null
+          if (timestampResponse.ok) {
+            const timestampData = await timestampResponse.json()
+            targetTimestamp = timestampData.timestamp
+          }
+          
+          if (!targetTimestamp) {
+            setRealtimeState({ key: selectedAreaKey, data: {} })
+            return
+          }
+          
+          // Fetch data from all "others" sub-components: relay, pmu, gis, battery, environment
+          const othersComponents = ["relay", "pmu", "gis", "battery", "environment"]
+          const combinedData: Partial<T> = {}
+          
+          const promises = othersComponents.map(async (component) => {
+            try {
+              const response = await fetch("/api/diagnosis/readings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  areaCode: selectedAreaCode,
+                  componentType: component,
+                  timestamp: targetTimestamp,
+                }),
+              })
+              
+              if (response.ok) {
+                const data = await response.json()
+                if (data.readings) {
+                  Object.assign(combinedData, data.readings)
+                }
+              }
+            } catch (err) {
+              console.error(`Error fetching ${component} for others:`, err)
+            }
+          })
+          
+          await Promise.allSettled(promises)
+          setRealtimeState({ key: selectedAreaKey, data: combinedData })
+        } catch (error) {
+          console.error("Error fetching others data from Firebase:", error)
+          setRealtimeState({ key: selectedAreaKey, data: {} })
+        }
+      }
+      
+      fetchOthersData()
+      
+      // Poll for updates every 5 seconds
+      const interval = setInterval(fetchOthersData, 5000)
+      return () => clearInterval(interval)
+    }
+
+    // For other categories, use realtime subscription
+    if (!realtimeDB) {
       queueMicrotask(() => {
         setRealtimeState({ key: null, data: {} })
       })
@@ -113,7 +193,7 @@ export function useLiveData<T extends Record<string, number | string>>(
     return () => {
       unsubscribe()
     }
-  }, [category, selectedAreaKey])
+  }, [category, selectedAreaKey, selectedAreaCode])
 
   const realtimeData = useMemo(() => {
     if (!selectedAreaKey) {

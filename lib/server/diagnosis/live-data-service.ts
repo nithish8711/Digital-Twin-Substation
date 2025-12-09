@@ -12,11 +12,11 @@ const FIREBASE_COMPONENT_MAP: Record<DiagnosisComponentKey, string> = {
   circuitBreaker: "CircuitBreaker",
   busbar: "Busbar",
   isolator: "Isolator",
-  relay: "relay",
-  pmu: "pmu",
-  gis: "gis",
-  battery: "battery",
-  environment: "environment",
+  relay: "Protection",
+  pmu: "Phasor",
+  gis: "GIS",
+  battery: "Battery",
+  environment: "Environment",
 }
 
 // Map UI parameter keys to Firebase field names for each component
@@ -62,11 +62,36 @@ const FIREBASE_FIELD_MAP: Record<DiagnosisComponentKey, Record<string, string>> 
     contactResistance: "contact_resistance_uohm",
     motorCurrent: "motor_current_a",
   },
-  relay: {},
-  pmu: {},
-  gis: {},
-  battery: {},
-  environment: {},
+  relay: {
+    relayStatus: "relay_status",
+    tripCount: "trip_count",
+    earthFaultCurrent: "earth_fault_current_a",
+    differentialCurrent: "differential_current_a",
+    tripCommand: "trip_command",
+  },
+  pmu: {
+    phaseAngle: "phase_angle_deg",
+    phasorMagnitude: "phasor_magnitude_pu",
+    voltagePhasor: "voltage_phasor",
+    currentPhasor: "current_phasor",
+    angleDifference: "angle_difference_deg",
+  },
+  gis: {
+    gisPressure: "gis_pressure_bar",
+    gisTemperature: "gis_temperature_c",
+    partialDischarge: "partial_discharge_pc",
+    busDifferentialCurrent: "bus_differential_current_a",
+  },
+  battery: {
+    batteryVoltage: "battery_voltage_v",
+    batteryCurrent: "battery_current_a",
+    batterySOC: "battery_soc_percent",
+    dcVoltage: "dc_bus_voltage_v",
+  },
+  environment: {
+    ambientTemperature: "ambient_temperature_c",
+    humidity: "humidity_percent",
+  },
 }
 
 /**
@@ -82,6 +107,33 @@ function convertFirebaseValue(value: any, paramKey: string, component: Diagnosis
   }
   if (paramKey === "cooling") {
     return value === 1 || value === "1" ? "ON" : "OFF"
+  }
+  
+  // Handle relay status
+  if (paramKey === "relayStatus") {
+    if (typeof value === "string") {
+      return value === "Active" || value === "active" || value === "1" || value === 1 ? "Active" : "Inactive"
+    }
+    return value === 1 || value === "1" ? "Active" : "Inactive"
+  }
+  
+  // Handle trip command
+  if (paramKey === "tripCommand") {
+    return value === 1 || value === "1" || value === "ON" || value === "on" ? "ON" : "OFF"
+  }
+  
+  // Handle phasor objects (voltage_phasor and current_phasor)
+  // Backend format: { "magnitude": 327.2, "angle": -8.1 } or { "magnitude": 327.2, "angle_deg": -8.1 }
+  if (paramKey === "voltagePhasor" || paramKey === "currentPhasor") {
+    if (value && typeof value === "object") {
+      const magnitude = value.magnitude ?? value.magnitude_pu ?? 0
+      const angle = value.angle_deg ?? value.angle ?? 0
+      return `${Number(magnitude).toFixed(1)} ∠ ${Number(angle).toFixed(1)}°`
+    }
+    // If it's already a string, return as-is
+    if (typeof value === "string") {
+      return value
+    }
   }
   
   // Return numeric values as-is, or convert strings to numbers
@@ -279,7 +331,7 @@ export async function getFirebaseData(path: string, isAdmin: boolean): Promise<a
 
 /**
  * Fetch live parameter readings from Firebase Realtime Database
- * Path structure: Madurai_West_Substation_AREA-728412/<UID>/readings/<timestamp>/<ComponentType>
+ * Path structure: Madurai_West_Substation/<substationId>/readings/<timestamp>/<ComponentType>
  * 
  * This function uses Realtime Database (NOT Firestore) for live sensor readings
  */
@@ -308,10 +360,10 @@ export async function fetchLiveSnapshot(
   console.log(`[fetchLiveSnapshot] Using ${isAdmin ? 'Admin' : 'Client'} Firebase SDK for Realtime Database`)
 
   try {
-    // The structure is: Madurai_West_Substation_AREA-728412/<UID>/readings/<timestamp>
-    const basePathPrefix = "Madurai_West_Substation_AREA-728412"
+    // The structure is: Madurai_West_Substation/<UID>/readings/<timestamp>
+    const basePathPrefix = "Madurai_West_Substation"
     
-    // Use the provided UID directly
+    // Use Firebase UID for the path
     const uid = getFirebaseUID()
     const basePath = `${basePathPrefix}/${uid}`
     

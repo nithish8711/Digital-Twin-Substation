@@ -18,6 +18,12 @@ const ALL_COMPONENTS: DiagnosisComponentKey[] = [
   "circuitBreaker",
   "busbar",
   "isolator",
+  // Others category sub-components
+  "relay",
+  "pmu",
+  "gis",
+  "battery",
+  "environment",
 ]
 
 /**
@@ -64,7 +70,7 @@ export async function initializeCache(areaCode: string): Promise<string | null> 
     }
 
     const { isAdmin } = dbInfo
-    const basePathPrefix = "Madurai_West_Substation_AREA-728412"
+    const basePathPrefix = "Madurai_West_Substation"
     const uid = getFirebaseUID()
     const basePath = `${basePathPrefix}/${uid}`
 
@@ -133,7 +139,7 @@ export async function updateCacheForNewTimestamp(
     }
 
     const { isAdmin } = dbInfo
-    const basePathPrefix = "Madurai_West_Substation_AREA-728412"
+    const basePathPrefix = "Madurai_West_Substation"
     const uid = getFirebaseUID()
     const basePath = `${basePathPrefix}/${uid}`
 

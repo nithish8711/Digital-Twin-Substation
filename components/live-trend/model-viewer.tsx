@@ -8,6 +8,10 @@ import { applyGlow, removeGlow, getGlowColor } from "@/lib/live-trend/glow-utils
 import { applyTimelineColorTransition } from "@/lib/live-trend/parameter-color-mapping"
 import { updateTransformerGlow, removeTransformerGlow } from "@/lib/live-trend/transformer-glow-utils"
 import { updateCircuitBreakerGlow, removeCircuitBreakerGlow } from "@/lib/live-trend/circuit-breaker-glow-utils"
+import {
+  getFaultProbabilityColor,
+  getOverallHealthColor,
+} from "@/lib/simulation-color-coding"
 import { Button } from "@/components/ui/button"
 import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react"
 import { createFallbackModel } from "@/components/simulation/fallback-models"
@@ -144,20 +148,33 @@ export function ModelViewer({
     hudAnchorRef.current.position.set(horizontalOffset, verticalOffset, depth)
   }
 
-  const positionCameraToModel = (model: THREE.Object3D) => {
+  const positionCameraToModel = (
+    model: THREE.Object3D,
+    options?: {
+      distanceScale?: number
+      minDistanceMultiplier?: number
+      maxDistanceMultiplier?: number
+      minDistanceFloor?: number
+      maxDistanceCeiling?: number
+      distanceBias?: number
+    },
+  ) => {
     if (!cameraRef.current || !controlsRef.current) return
     const box = new THREE.Box3().setFromObject(model)
     const size = box.getSize(new THREE.Vector3())
     const center = box.getCenter(new THREE.Vector3())
     const maxDim = Math.max(size.x, size.y, size.z)
-    const distance = Math.max(4, maxDim * 1.8)
+    const scale = options?.distanceScale ?? 1.8
+    const minDistance = Math.max(options?.minDistanceFloor ?? 1, maxDim * (options?.minDistanceMultiplier ?? 0.4))
+    const maxDistance = Math.max(options?.maxDistanceCeiling ?? 50, maxDim * (options?.maxDistanceMultiplier ?? 6))
+    const distance = Math.max(minDistance + (options?.distanceBias ?? 0), maxDim * scale)
     const offset = new THREE.Vector3(distance, distance * 0.6, distance)
 
     cameraRef.current.position.copy(center.clone().add(offset))
     cameraRef.current.lookAt(center)
     controlsRef.current.target.copy(center)
-    controlsRef.current.minDistance = Math.max(1, maxDim * 0.4)
-    controlsRef.current.maxDistance = Math.max(10, maxDim * 4)
+    controlsRef.current.minDistance = minDistance
+    controlsRef.current.maxDistance = maxDistance
     controlsRef.current.update()
     cameraTargetRef.current = center.clone()
     cameraDistanceRef.current = distance
@@ -296,23 +313,20 @@ export function ModelViewer({
   const getParameterDisplayColor = (value: number, parameter: string): string => {
     switch (parameter) {
       case "trueHealth":
-        if (value >= 80) return "#10b981" // Green
-        if (value >= 60) return "#f59e0b" // Yellow
-        if (value >= 40) return "#f97316" // Orange
-        return "#ef4444" // Red
+        // Use Overall Health color coding (high values = good health)
+        return getOverallHealthColor(value)
       case "stressScore":
+        // Keep existing stress score color scheme
         if (value <= 20) return "#3b82f6" // Blue
         if (value <= 40) return "#06b6d4" // Cyan
         if (value <= 60) return "#f59e0b" // Yellow
         if (value <= 80) return "#f97316" // Orange
         return "#ef4444" // Red
       case "faultProbability":
-        if (value <= 15) return "#10b981" // Green
-        if (value <= 35) return "#84cc16" // Light Green
-        if (value <= 55) return "#f59e0b" // Yellow
-        if (value <= 75) return "#f97316" // Orange
-        return "#ef4444" // Red
+        // Use Fault Probability color coding (0-100%)
+        return getFaultProbabilityColor(value)
       case "agingFactor":
+        // Keep existing aging factor color scheme
         if (value >= 80) return "#f8fafc" // White
         if (value >= 60) return "#cbd5e1" // Light Gray
         if (value >= 40) return "#94a3b8" // Gray
@@ -471,15 +485,23 @@ export function ModelViewer({
       if (didCancel || !sceneRef.current) return
 
       disposeCurrentModel()
-      // Use a lighter background so simple fallback geometry is visible
-      sceneRef.current.background = new THREE.Color(0xeef2f6)
+      // Use a black background to keep fallback visuals consistent across pages
+      sceneRef.current.background = new THREE.Color(0x000000)
 
       const fallbackType: ViewerComponentType = componentType ?? "substation"
       const model = createFallbackModel(fallbackType, glowDataRef.current, showGlowRef.current)
       sceneRef.current.add(model)
       modelRef.current = model
       ensureHudPanel()
-      positionCameraToModel(model)
+      const isSubstationFallback = fallbackType === "substation"
+      positionCameraToModel(model, {
+        distanceScale: isSubstationFallback ? 0.5 : 1.35,
+        minDistanceMultiplier: isSubstationFallback ? 0.12 : undefined,
+        maxDistanceMultiplier: isSubstationFallback ? 10 : undefined,
+        minDistanceFloor: isSubstationFallback ? 0.25 : undefined,
+        maxDistanceCeiling: isSubstationFallback ? 120 : undefined,
+        distanceBias: isSubstationFallback ? 0.15 : undefined,
+      })
       safeSetState(setHasModel, true)
       safeSetState(setIsLoading, false)
       safeSetState(setError, null)

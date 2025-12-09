@@ -47,7 +47,7 @@ export function SimulationTopNav() {
               <Button
                 key={button.id}
                 variant="default"
-                className={`shadow-md transition-all ${button.color} ${
+                className={`w-36 shadow-md transition-all ${button.color} ${
                   activeTab === button.id ? "ring-2 ring-offset-2 ring-white" : ""
                 }`}
                 onClick={() => handleTabClick(button.id)}

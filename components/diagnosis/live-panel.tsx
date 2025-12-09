@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/table"
 import { COMPONENT_DEFINITIONS } from "@/lib/diagnosis/component-config"
 import type { DiagnosisComponentKey, DiagnosisSeverity, ParameterState } from "@/lib/diagnosis/types"
+import { evaluateSeverity } from "@/lib/diagnosis/severity"
+import { useLiveTrendReadings } from "@/hooks/use-live-trend-readings"
 import { cn } from "@/lib/utils"
 
 const severityConfig: Record<
@@ -30,15 +32,87 @@ const severityConfig: Record<
 
 interface LivePanelProps {
   component: DiagnosisComponentKey
-  parameterStates: ParameterState[]
-  trendHistory: Record<string, number[]>
+  parameterStates?: ParameterState[] // Optional: fallback to static data
+  trendHistory?: Record<string, number[]> // Optional: fallback to static data
   liveTimestamp?: string
   liveSource?: string
+  areaCode?: string // Required for real-time updates
+  useLiveUpdates?: boolean // Flag to enable real-time updates
 }
 
-export function LivePanel({ component, parameterStates, trendHistory, liveTimestamp, liveSource }: LivePanelProps) {
+export function LivePanel({ 
+  component, 
+  parameterStates: staticParameterStates, 
+  trendHistory: staticTrendHistory, 
+  liveTimestamp: staticLiveTimestamp, 
+  liveSource,
+  areaCode,
+  useLiveUpdates = true,
+}: LivePanelProps) {
   const definition = COMPONENT_DEFINITIONS[component]
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  
+  // Use real-time readings if areaCode is provided and useLiveUpdates is true
+  const shouldUseLiveUpdates = useLiveUpdates && !!areaCode
+  const { readings: liveReadings, isLoading, lastTimestamp: liveTimestampFromHook } = useLiveTrendReadings(
+    component,
+    shouldUseLiveUpdates ? areaCode : "",
+  )
+  
+  // Convert live readings to parameterStates format
+  const liveParameterStates = useMemo(() => {
+    if (!shouldUseLiveUpdates || !liveReadings || Object.keys(liveReadings).length === 0) {
+      return staticParameterStates || []
+    }
+    
+    return definition.parameters.map((param) => {
+      const value = liveReadings[param.key] ?? null
+      const severity = evaluateSeverity(value, param)
+      
+      return {
+        key: param.key,
+        label: param.label,
+        value,
+        unit: param.unit,
+        severity,
+        minAlarm: param.minAlarm,
+        maxAlarm: param.maxAlarm,
+      }
+    })
+  }, [shouldUseLiveUpdates, liveReadings, definition, staticParameterStates])
+  
+  // Build trend history from live readings (simple history tracking)
+  const [trendHistoryState, setTrendHistoryState] = useState<Record<string, number[]>>(staticTrendHistory || {})
+  
+  useEffect(() => {
+    if (shouldUseLiveUpdates && liveReadings) {
+      setTrendHistoryState((prev) => {
+        const updated = { ...prev }
+        definition.parameters.forEach((param) => {
+          const value = liveReadings[param.key]
+          if (typeof value === "number") {
+            if (!updated[param.key]) {
+              updated[param.key] = []
+            }
+            // Keep last 20 values for trend
+            updated[param.key] = [...updated[param.key], value].slice(-20)
+          }
+        })
+        return updated
+      })
+    }
+  }, [shouldUseLiveUpdates, liveReadings, definition])
+  
+  // Use live data if available, otherwise fall back to static data
+  const parameterStates = shouldUseLiveUpdates && liveParameterStates.length > 0 
+    ? liveParameterStates 
+    : (staticParameterStates || [])
+  const trendHistory = shouldUseLiveUpdates 
+    ? trendHistoryState 
+    : (staticTrendHistory || {})
+  const displayTimestamp = shouldUseLiveUpdates && liveTimestampFromHook 
+    ? liveTimestampFromHook 
+    : staticLiveTimestamp
 
   useEffect(() => {
     queueMicrotask(() => setExpandedKey(null))
@@ -57,8 +131,14 @@ export function LivePanel({ component, parameterStates, trendHistory, liveTimest
         <div className="flex flex-wrap gap-3 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" />
-            {liveTimestamp ? new Date(liveTimestamp).toLocaleTimeString() : "N/A"}
+            {displayTimestamp ? new Date(displayTimestamp).toLocaleTimeString() : "N/A"}
           </span>
+          {shouldUseLiveUpdates && (
+            <span className="inline-flex items-center gap-1 text-emerald-600">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live
+            </span>
+          )}
         </div>
       </CardHeader>
       <CardContent className="max-h-[520px] overflow-auto rounded-b-2xl">

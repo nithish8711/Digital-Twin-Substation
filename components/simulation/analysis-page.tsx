@@ -70,6 +70,10 @@ import { useSimulation } from "./simulation-context"
 import { cn } from "@/lib/utils"
 import { calculateAllHealthScores } from "@/lib/simulation-engine"
 import { ModelViewer } from "@/components/live-trend/model-viewer"
+import {
+  getFaultProbabilityTextClass,
+  getOverallHealthTextClass,
+} from "@/lib/simulation-color-coding"
 
 const RECENT_LIMIT = 20
 
@@ -151,7 +155,7 @@ type Severity = "normal" | "low" | "medium" | "high" | "critical"
 
 const COMPONENT_LABELS: Record<ComponentType, string> = {
   transformer: "Transformer",
-  bayLines: "Bay Line",
+  bayLines: "Bay",
   circuitBreaker: "Circuit Breaker",
   isolator: "Isolator",
   busbar: "Busbar",
@@ -1841,7 +1845,9 @@ useEffect(() => {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border bg-white p-4">
               <p className="text-xs text-muted-foreground uppercase">True Health</p>
-              <p className="text-2xl font-semibold">{overallHealth.toFixed(1)}%</p>
+              <p className={cn("text-2xl font-semibold", getOverallHealthTextClass(overallHealth))}>
+                {overallHealth.toFixed(1)}%
+              </p>
             </div>
             {stressPercent !== null && (
               <div className="rounded-xl border bg-white p-4">
@@ -1852,7 +1858,9 @@ useEffect(() => {
             {faultProbabilityPercent !== null && (
               <div className="rounded-xl border bg-white p-4">
                 <p className="text-xs text-muted-foreground uppercase">Fault Probability</p>
-                <p className="text-2xl font-semibold text-red-600">{faultProbabilityPercent.toFixed(1)}%</p>
+                <p className={cn("text-2xl font-semibold", getFaultProbabilityTextClass(faultProbabilityPercent))}>
+                  {faultProbabilityPercent.toFixed(1)}%
+                </p>
               </div>
             )}
             {agingPercent !== null && (
@@ -2109,11 +2117,15 @@ useEffect(() => {
               {typeof simulation.faultProbability === "number" && (
                 <p className="text-xs text-muted-foreground">
                   Master engine probability{" "}
-                  {(
-                    (simulation.faultProbability <= 1 ? simulation.faultProbability * 100 : simulation.faultProbability) ||
-                    0
-                  ).toFixed(1)}
-                  %
+                  <span className={cn("font-semibold", getFaultProbabilityTextClass(
+                    (simulation.faultProbability <= 1 ? simulation.faultProbability * 100 : simulation.faultProbability) || 0
+                  ))}>
+                    {(
+                      (simulation.faultProbability <= 1 ? simulation.faultProbability * 100 : simulation.faultProbability) ||
+                      0
+                    ).toFixed(1)}
+                    %
+                  </span>
                 </p>
               )}
             </div>

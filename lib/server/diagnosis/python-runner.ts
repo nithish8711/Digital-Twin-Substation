@@ -48,7 +48,7 @@ const FAULT_LIBRARY: Record<DiagnosisComponentKey, Array<{ fault: string; subpar
   ],
 }
 
-const runCommand = (args: string[], stdinData?: string) =>
+const runCommand = (args: string[], stdinData?: string, timeoutMs: number = 60000) =>
   new Promise<string>((resolve, reject) => {
     const cmd = process.env.PYTHON_PATH || "python"
     const subprocess = spawn(cmd, args, { 
@@ -56,6 +56,22 @@ const runCommand = (args: string[], stdinData?: string) =>
     })
     let stdout = ""
     let stderr = ""
+    let isResolved = false
+
+    // Set timeout to kill process if it takes too long
+    const timeout = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true
+        subprocess.kill('SIGTERM')
+        // Force kill after a short grace period
+        setTimeout(() => {
+          if (!subprocess.killed) {
+            subprocess.kill('SIGKILL')
+          }
+        }, 2000)
+        reject(new Error(`Python script timeout after ${timeoutMs}ms. stderr: ${stderr.substring(0, 500)}`))
+      }
+    }, timeoutMs)
 
     // Write stdin data if provided
     if (stdinData && subprocess.stdin) {
@@ -69,8 +85,18 @@ const runCommand = (args: string[], stdinData?: string) =>
     subprocess.stderr.on("data", (chunk) => {
       stderr += chunk.toString()
     })
-    subprocess.on("error", (error) => reject(error))
+    subprocess.on("error", (error) => {
+      if (!isResolved) {
+        isResolved = true
+        clearTimeout(timeout)
+        reject(error)
+      }
+    })
     subprocess.on("close", (code) => {
+      if (isResolved) return
+      isResolved = true
+      clearTimeout(timeout)
+      
       if (code === 0) {
         // Extract JSON from stdout - TensorFlow might print progress info before/after JSON
         const trimmed = stdout.trim()
@@ -89,7 +115,21 @@ const runCommand = (args: string[], stdinData?: string) =>
           resolve(trimmed)
         }
       } else {
-        const error = new Error(stderr || `Python exited with code ${code}`)
+        // Try to extract JSON error from stderr if available
+        let errorMessage = stderr || `Python exited with code ${code}`
+        try {
+          // Check if stderr contains JSON error
+          const jsonMatch = stderr.match(/\{[\s\S]*"error"[\s\S]*\}/)
+          if (jsonMatch) {
+            const errorJson = JSON.parse(jsonMatch[0])
+            if (errorJson.error) {
+              errorMessage = errorJson.error
+            }
+          }
+        } catch {
+          // If JSON parsing fails, use original error message
+        }
+        const error = new Error(errorMessage)
         reject(error)
       }
     })
@@ -139,6 +179,8 @@ export async function invokePredictor(opts: {
   const { component, areaCode, substationId, liveReadings, assetMetadata } = opts
   const scriptPath = path.join(process.cwd(), "backend", "ml", "run_predictor.py")
   
+  console.log(`[invokePredictor] Starting prediction for ${component}, areaCode: ${areaCode}`)
+  
   // Transform data to ML input format
   const mlInput = transformToMLInput(
     component,
@@ -148,15 +190,46 @@ export async function invokePredictor(opts: {
     substationId || areaCode
   )
   
+  console.log(`[invokePredictor] ML input transformed, keys: ${Object.keys(mlInput).length}`)
+  
   const args = [scriptPath, "--component", component, "--stdin"]
   const stdinData = JSON.stringify(mlInput)
 
   try {
-    const output = await runCommand(args, stdinData)
+    console.log(`[invokePredictor] Calling Python script: ${scriptPath}`)
+    const startTime = Date.now()
+    // Use 60 second timeout for ML processing (can be increased if needed)
+    const output = await runCommand(args, stdinData, 60000)
+    const duration = Date.now() - startTime
+    console.log(`[invokePredictor] Python script completed in ${duration}ms`)
+    
     const parsed = JSON.parse(output)
+    console.log(`[invokePredictor] Prediction received, keys: ${Object.keys(parsed).length}`)
     return parsed
   } catch (error) {
-    console.warn("Python predictor failed, using mock prediction", error)
+    console.error(`[invokePredictor] Python predictor failed:`, error)
+    
+    // Extract meaningful error message
+    let errorMessage = "Unknown error"
+    if (error instanceof Error) {
+      errorMessage = error.message
+      
+      // Check for common dependency errors
+      if (errorMessage.includes("sklearn") || errorMessage.includes("scikit-learn")) {
+        console.error(`[invokePredictor] Missing scikit-learn package. Install with: pip install scikit-learn`)
+        errorMessage = "Missing scikit-learn package. Please install it: pip install scikit-learn"
+      } else if (errorMessage.includes("MemoryError")) {
+        console.error(`[invokePredictor] Memory error - may be due to Python 3.13 compatibility issues. Consider using Python 3.10-3.12.`)
+        errorMessage = "Memory error - Python 3.13 may have compatibility issues. Consider using Python 3.10-3.12."
+      } else if (errorMessage.includes("No module named") || errorMessage.includes("ImportError")) {
+        const moduleMatch = errorMessage.match(/No module named ['"]([^'"]+)['"]|ImportError.*['"]([^'"]+)['"]/)
+        const moduleName = moduleMatch ? (moduleMatch[1] || moduleMatch[2]) : "unknown"
+        console.error(`[invokePredictor] Missing Python package: ${moduleName}. Install with: pip install ${moduleName}`)
+        errorMessage = `Missing Python package: ${moduleName}. Install with: pip install ${moduleName}`
+      }
+    }
+    
+    console.warn(`[invokePredictor] Using mock prediction due to error: ${errorMessage}`)
     return mockPrediction(component, liveReadings, assetMetadata)
   }
 }

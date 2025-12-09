@@ -5,6 +5,8 @@ import { Shield } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { getOverallHealthTextClass } from "@/lib/simulation-color-coding"
+import { cn } from "@/lib/utils"
 
 interface HealthPanelProps {
   healthIndex: number
@@ -37,7 +39,9 @@ export function HealthPanel({ healthIndex, top3Factors = [] }: HealthPanelProps)
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-500">Overall Health</p>
-              <p className="text-3xl font-semibold text-slate-900">{Math.round(healthIndex)}%</p>
+              <p className={cn("text-3xl font-semibold", getOverallHealthTextClass(healthIndex))}>
+                {Math.round(healthIndex)}%
+              </p>
             </div>
             <Badge className={severity}>{healthIndex < 40 ? "Alert" : healthIndex < 60 ? "Watch" : "Healthy"}</Badge>
           </div>

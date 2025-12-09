@@ -1,17 +1,19 @@
 "use client"
 
-import { useState, Suspense, lazy, useMemo, useEffect } from "react"
+import { useState, Suspense, lazy, useMemo, useEffect, type ComponentProps } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search, AlertTriangle, Loader2 } from "lucide-react"
+import { Search, AlertTriangle, Loader2, Maximize2, X } from "lucide-react"
 import { ModelViewer } from "@/components/live-trend/model-viewer"
 import { useLiveData, dataGenerators } from "@/hooks/use-live-data"
 import { getGlowColor } from "@/lib/live-trend/glow-utils"
 import { useLiveTrend } from "@/components/live-trend/live-trend-context"
 import { getSubstationById } from "@/lib/firebase-data"
 import type { DummySubstation } from "@/lib/dummy-data"
-import { useAllFirebaseReadings } from "@/hooks/use-all-firebase-readings"
+import { useAllReadings } from "@/hooks/use-all-readings"
+import { DataSourceToggle } from "@/components/scada/data-source-toggle"
+import { useDataSource } from "@/lib/scada/data-source-context"
 
 // Lazy load panels for better performance - actually lazy load with dynamic imports
 const LazySubstationPanel = lazy(() => import("@/components/live-trend/substation-panel").then(m => ({ default: m.SubstationPanel })))
@@ -32,11 +34,11 @@ function LoadingFallback() {
   )
 }
 
-// Helper function to get all critical values (orange) from all panels using Firebase readings
+// Helper function to get all critical values (orange) from all panels using Firebase/SCADA readings
 function useCriticalValues() {
   const { selectedArea } = useLiveTrend()
   const areaCode = selectedArea?.areaCode || ""
-  const { allReadings } = useAllFirebaseReadings(areaCode)
+  const { allReadings } = useAllReadings(areaCode)
   
   // Fallback to dummy data for "others" category (not in Firebase)
   const othersData = useLiveData("others", dataGenerators.others)
@@ -67,9 +69,9 @@ function useCriticalValues() {
       { key: "tapPosition", label: "Tap Position", unit: "steps" },
     ])
 
-    // Bay Lines parameters (from Firebase)
+    // Bays parameters (from Firebase)
     const bayLinesReadings = allReadings.bayLines || {}
-    checkParameter(bayLinesReadings, "Bay Lines", [
+    checkParameter(bayLinesReadings, "Bays", [
       { key: "frequency", label: "Frequency", unit: "Hz" },
       { key: "powerFactor", label: "Power Factor", unit: "p.u." },
       { key: "mw", label: "Active Power", unit: "MW" },
@@ -103,7 +105,7 @@ function useCriticalValues() {
 function useGlowData(category: string) {
   const { selectedArea } = useLiveTrend()
   const areaCode = selectedArea?.areaCode || ""
-  const { allReadings } = useAllFirebaseReadings(areaCode)
+  const { allReadings } = useAllReadings(areaCode)
   const transformerData = useLiveData("transformer", dataGenerators.transformer)
   const bayLinesData = useLiveData("bayLines", dataGenerators.bayLines)
   const circuitBreakerData = useLiveData("circuitBreaker", dataGenerators.circuitBreaker)
@@ -182,12 +184,14 @@ function useGlowData(category: string) {
 
 export default function LiveTrendPage() {
   const { activeCategory, setSelectedArea, selectedArea } = useLiveTrend()
+  const { dataSource } = useDataSource()
   const criticalValues = useCriticalValues()
   const glowData = useGlowData(activeCategory)
   const [substationId, setSubstationId] = useState<string>("")
   const [substation, setSubstation] = useState<DummySubstation | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isModelFullscreen, setIsModelFullscreen] = useState(false)
 
   // Preload data for all components when area is selected (background fetch)
   useEffect(() => {
@@ -236,6 +240,13 @@ export default function LiveTrendPage() {
         console.debug("Preload timestamp check failed:", err)
       })
   }, [selectedArea?.areaCode])
+
+  // Close fullscreen model when switching to a category without a 3D view
+  useEffect(() => {
+    if (activeCategory === "others") {
+      setIsModelFullscreen(false)
+    }
+  }, [activeCategory])
 
   const handleSearch = async () => {
     if (!substationId.trim()) {
@@ -330,49 +341,153 @@ export default function LiveTrendPage() {
     }
   }
 
+  const renderModelViewer = (
+    keySuffix: string,
+    extraProps: Partial<ComponentProps<typeof ModelViewer>> = {},
+  ) => {
+    const mergedClassName = extraProps.className ? `w-full h-full ${extraProps.className}` : "w-full h-full"
+    const commonProps = { ...extraProps, className: mergedClassName }
+
+    switch (activeCategory) {
+      case "substation":
+        return (
+          <ModelViewer
+            key={`substation-model-${keySuffix}`}
+            modelPath="/models/substation/substation.glb"
+            showGlow={false}
+            componentType="substation"
+            useFallback
+            {...commonProps}
+          />
+        )
+      case "bayLines":
+        return (
+          <ModelViewer
+            key={`bayLines-model-${keySuffix}`}
+            modelPath="/models/bay-lines/bay-lines.glb"
+            glowData={glowData}
+            showGlow={Object.keys(glowData).length > 0}
+            componentType="bayLines"
+            useFallback
+            {...commonProps}
+          />
+        )
+      case "transformer":
+        return (
+          <ModelViewer
+            key={`transformer-model-${keySuffix}`}
+            modelPath="/model/transformer_model.glb"
+            glowData={glowData}
+            showGlow
+            componentType="transformer"
+            useFallback={false}
+            {...commonProps}
+          />
+        )
+      case "circuitBreaker":
+        return (
+          <ModelViewer
+            key={`circuitBreaker-model-${keySuffix}`}
+            modelPath="/model/circuitbreaker_model.glb"
+            glowData={glowData}
+            showGlow
+            componentType="circuitBreaker"
+            useFallback={false}
+            {...commonProps}
+          />
+        )
+      case "busbar":
+        return (
+          <ModelViewer
+            key={`busbar-model-${keySuffix}`}
+            modelPath={null}
+            glowData={glowData}
+            showGlow={Object.keys(glowData).length > 0}
+            componentType="busbar"
+            useFallback
+            {...commonProps}
+          />
+        )
+      case "isolator":
+        return (
+          <ModelViewer
+            key={`isolator-model-${keySuffix}`}
+            modelPath="/models/isolator/isolator.glb"
+            showGlow={false}
+            componentType="isolator"
+            useFallback
+            {...commonProps}
+          />
+        )
+      default:
+        return null
+    }
+  }
+
+  const modelViewerCard = renderModelViewer("card")
+
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col overflow-hidden">
       {/* Search Bar - Only for Substation page */}
       {activeCategory === "substation" && (
         <Card className="p-4 flex-shrink-0 mb-4">
-          <div className="flex gap-2 items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Enter Substation ID, Code, Name, or Area Name..."
-                value={substationId}
-                onChange={(e) => setSubstationId(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleSearch()
-                  }
-                }}
-                className="pl-10"
-              />
-            </div>
-            <Button 
-              onClick={handleSearch} 
-              disabled={isLoading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                "Search"
-              )}
-            </Button>
+          <div className="space-y-4">
+            {/* Data Source Toggle */}
+            <DataSourceToggle />
+            
+            {/* Search Input - Only shown when Firebase mode is active */}
+            {dataSource === "firebase" && (
+              <>
+                <div className="flex gap-2 items-center">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Enter Substation ID, Code, Name, or Area Name..."
+                      value={substationId}
+                      onChange={(e) => setSubstationId(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleSearch()
+                        }
+                      }}
+                      className="pl-10"
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleSearch} 
+                    disabled={isLoading}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Search"
+                    )}
+                  </Button>
+                </div>
+                {error && (
+                  <div className="text-sm text-red-600">{error}</div>
+                )}
+                {substation && (
+                  <div className="text-sm text-green-600">
+                    Showing data for: {substation.master.name} ({substation.master.substationCode})
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* SCADA Mode Info */}
+            {dataSource === "scada" && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                <div className="text-sm text-green-800">
+                  <strong>SCADA Mode Active:</strong> Live data is being streamed from SCADA system. Search is disabled.
+                </div>
+              </div>
+            )}
           </div>
-          {error && (
-            <div className="mt-2 text-sm text-red-600">{error}</div>
-          )}
-          {substation && (
-            <div className="mt-2 text-sm text-green-600">
-              Showing data for: {substation.master.name} ({substation.master.substationCode})
-            </div>
-          )}
         </Card>
       )}
 
@@ -470,113 +585,50 @@ export default function LiveTrendPage() {
           {/* Right Column - 3D Model Full Height */}
           <div className="h-full min-h-0">
             <Suspense fallback={<LoadingFallback />}>
-              {activeCategory === "substation" && (
+              {modelViewerCard && (
                 <Card className="h-full overflow-hidden flex flex-col">
                   <CardHeader className="flex-shrink-0">
-                    <CardTitle>3D Model View</CardTitle>
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle>3D Model View</CardTitle>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setIsModelFullscreen(true)}
+                        aria-label="Open full screen 3D model"
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardHeader>
-                  <CardContent className="p-0 flex-1 min-h-0">
-                    <ModelViewer
-                      key="substation-model"
-                      modelPath="/models/substation/substation.glb"
-                      showGlow={false}
-                      className="w-full h-full"
-                      componentType="substation"
-                      useFallback
-                    />
-                  </CardContent>
-                </Card>
-              )}
-              {activeCategory === "bayLines" && (
-                <Card className="h-full overflow-hidden flex flex-col">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle>3D Model View</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 flex-1 min-h-0">
-                    <ModelViewer
-                      key="bayLines-model"
-                      modelPath="/models/bay-lines/bay-lines.glb"
-                      glowData={glowData}
-                      showGlow={Object.keys(glowData).length > 0}
-                      className="w-full h-full"
-                      componentType="bayLines"
-                      useFallback
-                    />
-                  </CardContent>
-                </Card>
-              )}
-              {activeCategory === "transformer" && (
-                <Card className="h-full overflow-hidden flex flex-col">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle>3D Model View</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 flex-1 min-h-0">
-                    <ModelViewer
-                      key="transformer-model"
-                      modelPath="/model/transformer_model.glb"
-                      glowData={glowData}
-                      showGlow={true}
-                      className="w-full h-full"
-                      componentType="transformer"
-                      useFallback={false}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-              {activeCategory === "circuitBreaker" && (
-                <Card className="h-full overflow-hidden flex flex-col">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle>3D Model View</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 flex-1 min-h-0">
-                    <ModelViewer
-                      key="circuitBreaker-model"
-                      modelPath="/model/circuitbreaker_model.glb"
-                      glowData={glowData}
-                      showGlow={true}
-                      className="w-full h-full"
-                      componentType="circuitBreaker"
-                      useFallback={false}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-              {activeCategory === "busbar" && (
-                <Card className="h-full overflow-hidden flex flex-col">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle>3D Model View</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 flex-1 min-h-0">
-                    <ModelViewer
-                      key="busbar-model"
-                      modelPath={null}
-                      glowData={glowData}
-                      showGlow={Object.keys(glowData).length > 0}
-                      className="w-full h-full"
-                      componentType="busbar"
-                      useFallback
-                    />
-                  </CardContent>
-                </Card>
-              )}
-              {activeCategory === "isolator" && (
-                <Card className="h-full overflow-hidden flex flex-col">
-                  <CardHeader className="flex-shrink-0">
-                    <CardTitle>3D Model View</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0 flex-1 min-h-0">
-                    <ModelViewer
-                      key="isolator-model"
-                      modelPath="/models/isolator/isolator.glb"
-                      showGlow={false}
-                      className="w-full h-full"
-                      componentType="isolator"
-                      useFallback
-                    />
-                  </CardContent>
+                  <CardContent className="p-0 flex-1 min-h-0">{modelViewerCard}</CardContent>
                 </Card>
               )}
             </Suspense>
+          </div>
+        </div>
+      )}
+
+      {isModelFullscreen && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 text-white">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">3D Model View</span>
+              <span className="text-sm text-white/70 capitalize">{activeCategory}</span>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-white hover:bg-white/10"
+              onClick={() => setIsModelFullscreen(false)}
+              aria-label="Close full screen 3D model"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+          <div className="flex-1 p-4 min-h-0">
+            <div className="w-full h-full rounded-lg border border-white/10 bg-black">
+              {renderModelViewer("fullscreen", { className: "w-full h-full" })}
+            </div>
           </div>
         </div>
       )}

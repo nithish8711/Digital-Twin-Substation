@@ -78,10 +78,10 @@ export function getGlowColor(
   switch (parameter) {
     // Transformer Parameters
     case "oilLevel":
-      if (numValue >= 95) return "#0AB9FF" // Blue
-      if (numValue >= 92) return "#FFB547" // Amber
-      if (numValue >= 90) return "#FF8A2A" // Orange
-      return "#FF376B" // Red
+      if (numValue < 60) return "#FF8A2A" // Orange (critical)
+      if (numValue >= 60 && numValue <= 100) return "#0AB9FF" // Blue (normal range, not critical)
+      if (numValue > 100) return "#FF376B" // Red
+      return "#0AB9FF" // Default to blue
 
     case "oilTemperature":
       if (numValue < 30) return "#0AB9FF" // Blue
@@ -102,10 +102,10 @@ export function getGlowColor(
       return "#FF376B" // Red
 
     case "tapPosition":
-      const deviation = Math.abs(numValue)
-      if (deviation <= 4) return "#0AB9FF" // Blue
-      if (deviation <= 8) return "#FFB547" // Amber
-      return "#FF8A2A" // Orange (erratic/jump would need additional logic)
+      // Critical: >17 or <0 (values between 0-17 are normal, not critical)
+      if (numValue > 17 || numValue < 0) return "#FF8A2A" // Orange (critical)
+      if (numValue >= 0 && numValue <= 17) return "#0AB9FF" // Blue (normal range, not critical)
+      return "#0AB9FF" // Default to blue
 
     // Busbar Parameters
     case "busbarLoad":
@@ -120,7 +120,7 @@ export function getGlowColor(
       if (numValue < 80) return "#FF8A2A" // Orange
       return "#FF376B" // Red
 
-    // Bay Lines Parameters
+    // Bays Parameters
     case "ctLoading":
       if (numValue < 60) return "#0AB9FF" // Blue
       if (numValue < 80) return "#FFB547" // Amber
